@@ -1,0 +1,19 @@
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: cpu-device-pod-mutator-webhook-config
+webhooks:
+  - name: cpu-dev-mutator.nokia.k8s.io
+    clientConfig:
+      service:
+        name: cpu-dev-pod-mutator-svc
+        namespace: default
+        path: "/mutating-pods"
+      caBundle: "${CA_BUNDLE}"
+    rules:
+      - operations: ["CREATE","UPDATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+    failurePolicy: Fail

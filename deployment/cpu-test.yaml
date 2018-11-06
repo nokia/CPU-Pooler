@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpupod
+  annotations:
+    nokia.k8s.io/cpus: |
+      [{
+      "container": "cputestcontainer",
+      "processes":
+        [{
+           "process": "/bin/sh",
+           "args": ["-c","/thread_busyloop -n \"Process \"1"],
+           "cpus": 1,
+           "pool": "cpupool2"
+         },
+         {
+           "process": "/bin/sh",
+           "args": ["-c", "/thread_busyloop -n \"Process \"2"],
+           "pool": "sharedpool",
+           "cpus": 10
+         } 
+      ]
+      }]
+spec:
+  containers:
+  - name: cputestcontainer
+    command: [ "/bin/bash", "-c", "--" ]
+    args: [ "while true; do sleep 1; done;" ]
+#    command:
+#    - /opt/bin/process_starter
+    image: busyloop
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: 2000Mi
+        nokia.k8s.io/cpupool2: "2"
+        nokia.k8s.io/sharedpool: "10"
+      limits:
+        memory: 2000Mi
+        nokia.k8s.io/cpupool2: "2"
+        nokia.k8s.io/sharedpool: "10"
+  - name: busyloop
+    image: busyloop
+    command:
+    - /thread_busyloop
+    args: [ "-c","$(EXCLUSIVE_CPUS)", "-n","Process 3" ]
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        memory: 2000Mi
+        nokia.k8s.io/cpupool1: "2"
+      limits:
+        memory: 2000Mi
+        nokia.k8s.io/cpupool1: "2"

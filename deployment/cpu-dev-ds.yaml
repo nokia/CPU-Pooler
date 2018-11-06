@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cpu-device-plugin
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      name: cpu-device-plugin
+  template:
+    metadata:
+      labels:
+        name: cpu-device-plugin
+    spec:
+      containers:
+      - name: cpu-device-plugin 
+        image: cpudp
+        imagePullPolicy: IfNotPresent
+        command: [ "/cpu-device-plugin", "-logtostderr" ]
+        volumeMounts:
+         - mountPath: /etc/cpu-dp
+           name: cpu-dp-config
+         - mountPath: /var/lib/kubelet/device-plugins/ 
+           name: devicesock 
+           readOnly: false
+      volumes:
+      - name: devicesock 
+        hostPath:
+         # directory location on host
+         path: /var/lib/kubelet/device-plugins/
+      - name: cpu-dp-config
+        configMap:
+          name: cpu-dp-configmap

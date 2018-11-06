@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cpu-dp-configmap
+data:
+  poolconfig.yaml: |
+    resourceBaseName: "nokia.k8s.io"
+    pools: 
+      cpupool1:
+        cpus : "4,5"
+        pooltype: "exclusive"
+      cpupool2:
+        cpus : "2,3"
+        pooltype: "exclusive"
+      sharedpool:
+        cpus : "1"
+        pooltype: "shared"
