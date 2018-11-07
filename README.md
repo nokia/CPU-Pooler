@@ -1,5 +1,8 @@
 # CPU Pooler for Kubernetes
 
+[![Build Status](https://travis-ci.org/nokia/CPU-Pooler.svg?branch=master)](https://travis-ci.org/nokia/CPU-Pooler)
+
+## Overview
 CPU Pooler for Kubernetes is a solution for Kubernetes to manage predefined CPU pools in Kubernetes nodes. Two types of cpu pools are supported; exclusive and shared. Request from exclusive pool will allocate cpu(s) for the container with exclusive access. From the shared pool the container can request fractional cpus with one cpu unit matching to one thousandth of cpu (millicpu).
 
 The core component of the CPU pooler is a cpu-device-plugin which is implemented as a standard Kubernetes device plugin. The plugin advertises cpus in the pools as consumable resources. The cpus allocated by the plugin are communicated to the container as environment variable containing a list cpus. The application can set cpu affinity according to the given cpu list.
