@@ -100,31 +100,32 @@ An example is provided in cpu-test.yaml pod manifest in the deployment folder.
 Mutating webhook
 
 ```
-docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https_proxy -t cpu-device-webhook -f build/Dockerfile.webhook  .
+$ docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https_proxy -t cpu-device-webhook -f build/Dockerfile.webhook  .
 ```
 The device plugin
 
 ```
-docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https_proxy -t cpudp -f build/Dockerfile.cpudp  .
+$ docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https_proxy -t cpudp -f build/Dockerfile.cpudp  .
 ```
 
 Process starter
 
 ```
-CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' github.com/nokia/CPU-Pooler/cmd/process-starter
+$ dep ensure
+$ CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' github.com/nokia/CPU-Pooler/cmd/process-starter
 ```
 ## Installation
 
 Install process starter to host file system:
 
 ```
-cp process-starter /opt/bin/
+$ cp process-starter /opt/bin/
 ```
 
 Create cpu-device-plugin config and daemonset:
 ```
-kubectl create -f deployment/cpu-dp-config.yaml
-kubectl create -f deployment/cpu-dev-ds.yaml
+$ kubectl create -f deployment/cpu-dp-config.yaml
+$ kubectl create -f deployment/cpu-dev-ds.yaml
 ```
 There is a helper script ```./scripts/generate_cert.sh``` that generates certificate and key for the webhook admission controller. The script ```deployment/create-webhook-conf.sh``` can be used to create the webhook configuration from the provided manifest file (```webhook-conf.yaml```).
 
@@ -137,7 +138,7 @@ $ deployment/create-webhook-conf.sh deployment/webhook-conf.yaml
 ```
 The cpu-device-plugin with webhook should be running now. Test the installation with a cpu test pod. First create image for the test container:
 ```
-docker build -t busyloop test/
+$ docker build -t busyloop test/
 ```
 
 Start the test container:
