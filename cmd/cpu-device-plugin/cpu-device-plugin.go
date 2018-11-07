@@ -24,7 +24,7 @@ type cpuDeviceManager struct {
 	pool           types.Pool
 	socketFile     string
 	grpcServer     *grpc.Server
-	sharedPoolCpus string
+	sharedPoolCPUs string
 }
 
 func (cdm *cpuDeviceManager) PreStartContainer(ctx context.Context, psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
@@ -91,14 +91,14 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 		if updateNeeded {
 			resp := new(pluginapi.ListAndWatchResponse)
 			if cdm.pool.PoolType == "shared" {
-				nbrOfCpus := len(strings.Split(cdm.pool.Cpus, ","))
-				for i := 0; i < nbrOfCpus*1000; i++ {
-					cpuId := strconv.Itoa(i)
-					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuId, pluginapi.Healthy})
+				nbrOfCPUs := len(strings.Split(cdm.pool.CPUs, ","))
+				for i := 0; i < nbrOfCPUs*1000; i++ {
+					cpuID := strconv.Itoa(i)
+					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuID, pluginapi.Healthy})
 				}
 			} else {
-				for _, cpuId := range strings.Split(cdm.pool.Cpus, ",") {
-					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuId, pluginapi.Healthy})
+				for _, cpuID := range strings.Split(cdm.pool.CPUs, ",") {
+					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuID, pluginapi.Healthy})
 				}
 			}
 			if err := stream.Send(resp); err != nil {
@@ -124,7 +124,7 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 			cpusAllocated = cpusAllocated + id + ","
 		}
 		if cdm.pool.PoolType == "shared" {
-			envmap["SHARED_CPUS"] = cdm.sharedPoolCpus
+			envmap["SHARED_CPUS"] = cdm.sharedPoolCPUs
 		} else {
 			envmap["EXCLUSIVE_CPUS"] = cpusAllocated[:len(cpusAllocated)-1]
 		}
@@ -167,20 +167,20 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 	return nil
 }
 
-func NewCpuDeviceManager(poolName string, pool types.Pool, sharedCpus string) *cpuDeviceManager {
+func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
 
 	glog.Infof("Starting plugin for pool: %s", poolName)
 
 	return &cpuDeviceManager{
 		pool:           pool,
 		socketFile:     fmt.Sprintf("cpudp_%s.sock", poolName),
-		sharedPoolCpus: sharedCpus,
+		sharedPoolCPUs: sharedCPUs,
 	}
 
 }
 
-func CreatePluginsForPools() error {
-	var sharedCpus string
+func createPluginsForPools() error {
+	var sharedCPUs string
 	files, err := filepath.Glob(filepath.Join(pluginapi.DevicePluginPath, "cpudp*"))
 	if err != nil {
 		panic(err)
@@ -197,9 +197,9 @@ func CreatePluginsForPools() error {
 	}
 	for poolName, pool := range poolConf.Pools {
 		if pool.PoolType == "shared" {
-			sharedCpus = pool.Cpus
+			sharedCPUs = pool.CPUs
 		}
-		cdm := NewCpuDeviceManager(poolName, pool, sharedCpus)
+		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)
 		if err := cdm.Start(); err != nil {
 			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
 			break
@@ -236,7 +236,7 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	if err := CreatePluginsForPools(); err != nil {
+	if err := createPluginsForPools(); err != nil {
 		panic("Failed to start device plugin")
 	}
 
@@ -260,7 +260,7 @@ func main() {
 				cdm.Stop()
 			}
 			cdms = nil
-			if err := CreatePluginsForPools(); err != nil {
+			if err := createPluginsForPools(); err != nil {
 				panic("Failed to restart device plugin")
 			}
 		}

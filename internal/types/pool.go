@@ -6,19 +6,25 @@ import (
 	"io/ioutil"
 )
 
+// Pool defines cpupool
 type Pool struct {
-	Cpus     string `yaml:"cpus"`
+	CPUs     string `yaml:"cpus"`
 	PoolType string `yaml:"pooltype"`
 }
 
+// PoolConfig defines pool configurtion for a node
 type PoolConfig struct {
 	ResourceBaseName string          `yaml:"resourceBaseName"`
 	Pools            map[string]Pool `yaml:"pools"`
 }
 
+// PoolConfigFile defines the pool configuration file location
+var PoolConfigFile = "/etc/cpu-dp/poolconfig.yaml"
+
+// ReadPoolConfig implements pool configuration file reading
 func ReadPoolConfig() (PoolConfig, error) {
 	var pools PoolConfig
-	file, err := ioutil.ReadFile("/etc/cpu-dp/poolconfig.yaml")
+	file, err := ioutil.ReadFile(PoolConfigFile)
 	if err != nil {
 		glog.Errorf("Could not read poolconfig")
 	} else {

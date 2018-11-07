@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func readCpuAnnotation() ([]types.Container, error) {
+func readCPUAnnotation() ([]types.Container, error) {
 	var s string
 	var containers []types.Container
 	var str string
@@ -55,18 +55,18 @@ func waitCommand(cmd *exec.Cmd, cch chan int, index int) {
 	cch <- index
 }
 
-func setAffinity(nbrCpus int, cpuList []int) []int {
-	if len(cpuList) < nbrCpus {
-		fmt.Printf("Not enough cpus free, cannot set affinity %d:%v\n", nbrCpus, cpuList)
+func setAffinity(nbrCPUs int, cpuList []int) []int {
+	if len(cpuList) < nbrCPUs {
+		fmt.Printf("Not enough cpus free, cannot set affinity %d:%v\n", nbrCPUs, cpuList)
 		return nil
 	}
 	cpuset := new(unix.CPUSet)
-	cpus := cpuList[:nbrCpus]
+	cpus := cpuList[:nbrCPUs]
 	for _, cpu := range cpus {
 		cpuset.Set(cpu)
 	}
 	unix.SchedSetaffinity(0, cpuset)
-	return cpuList[nbrCpus:]
+	return cpuList[nbrCPUs:]
 }
 
 func cpuListStrToIntSlice(cpuString string) (cpuList []int) {
@@ -84,16 +84,16 @@ func cpuListStrToIntSlice(cpuString string) (cpuList []int) {
 }
 
 func main() {
-	containers, err := readCpuAnnotation()
+	containers, err := readCPUAnnotation()
 	if err != nil {
 		os.Exit(1)
 	}
 	var cmds []*exec.Cmd
 	completionChannel := make(chan int, 10)
 	myContainerName := os.Getenv("CONTAINER_NAME")
-	exclCpus := os.Getenv("EXCLUSIVE_CPUS")
-	exclCpuList := cpuListStrToIntSlice(exclCpus)
-	fmt.Printf("Exclusive cpu list %v\n", exclCpuList)
+	exclCPUs := os.Getenv("EXCLUSIVE_CPUS")
+	exclCPUList := cpuListStrToIntSlice(exclCPUs)
+	fmt.Printf("Exclusive cpu list %v\n", exclCPUList)
 
 	poolConf, err := types.ReadPoolConfig()
 	if err != nil {
@@ -116,11 +116,11 @@ func main() {
 			cmd := exec.Command(process.ProcName, process.Args...)
 
 			if poolConf.Pools[process.PoolName].PoolType == "exclusive" {
-				exclCpuList = setAffinity(process.Cpus, exclCpuList)
+				exclCPUList = setAffinity(process.CPUs, exclCPUList)
 			} else {
 				/* It is shared pool */
-				sharedCpuList := cpuListStrToIntSlice(poolConf.Pools[process.PoolName].Cpus)
-				setAffinity(len(sharedCpuList), sharedCpuList)
+				sharedCPUList := cpuListStrToIntSlice(poolConf.Pools[process.PoolName].CPUs)
+				setAffinity(len(sharedCPUList), sharedCPUList)
 
 			}
 			cmd.Stdout = os.Stdout
@@ -140,7 +140,7 @@ func main() {
 	select {
 	case cmdIndex := <-completionChannel:
 		fmt.Printf("Command index %d ended\n", cmdIndex)
-		for index, _ := range cmds {
+		for index := range cmds {
 			if index != cmdIndex {
 				cmds[index].Process.Kill()
 				fmt.Printf("Killing command index %d\n", index)

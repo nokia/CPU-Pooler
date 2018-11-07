@@ -25,7 +25,7 @@ import (
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 
-type Patch struct {
+type patch struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
 	Value json.RawMessage `json:"value"`
@@ -68,7 +68,7 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 func annotationNameFromConfig() (string, error) {
 	poolConf, err := types.ReadPoolConfig()
 	if err != nil {
-		glog.Error("Could not read poolconfig %v", err)
+		glog.Errorf("Could not read poolconfig %v", err)
 		return "", err
 	}
 	return poolConf.ResourceBaseName + "/cpus", nil
@@ -100,8 +100,8 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	reviewResponse.Allowed = true
 	if annotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
 		glog.V(2).Infof("mutatePod : Annotation %v", annotation)
-		var patchList []Patch
-		var patchItem Patch
+		var patchList []patch
+		var patchItem patch
 		containersToPatch, err := containersToPatchFromAnnotation([]byte(annotation))
 		if err != nil {
 			glog.Errorf("Patch containers %v", err)
