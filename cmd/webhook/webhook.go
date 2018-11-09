@@ -24,6 +24,7 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
+var poolConf types.PoolConfig
 
 type patch struct {
 	Op    string          `json:"op"`
@@ -55,6 +56,28 @@ func containersToPatchFromAnnotation(annotation []byte) ([]string, error) {
 	return containersToPatch, nil
 
 }
+func sharedCpuTimeFromAnnotation(annotation []byte, container string) (int, error) {
+	var cpuAnnotation []types.Container
+	var cpuTime int = 0
+
+	err := json.Unmarshal(annotation, &cpuAnnotation)
+	if err != nil {
+		glog.Error(err)
+		return 0, err
+	}
+
+	for _, cont := range cpuAnnotation {
+		if cont.Name == container {
+			for _, process := range cont.Processes {
+				if "shared" == poolConf.Pools[process.PoolName].PoolType {
+					cpuTime += process.CPUs
+				}
+			}
+		}
+	}
+	return cpuTime, nil
+
+}
 
 func isContainerPatchNeeded(containerName string, containersToPatch []string) bool {
 	for _, name := range containersToPatch {
@@ -65,13 +88,8 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 	return false
 }
 
-func annotationNameFromConfig() (string, error) {
-	poolConf, err := types.ReadPoolConfig()
-	if err != nil {
-		glog.Errorf("Could not read poolconfig %v", err)
-		return "", err
-	}
-	return poolConf.ResourceBaseName + "/cpus", nil
+func annotationNameFromConfig() string {
+	return poolConf.ResourceBaseName + "/cpus"
 
 }
 
@@ -92,25 +110,32 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	reviewResponse := v1beta1.AdmissionResponse{}
-	annotationName, err := annotationNameFromConfig()
-	if err != nil {
-		reviewResponse.Allowed = false
-		return &reviewResponse
-	}
+
+	annotationName := annotationNameFromConfig()
+
 	reviewResponse.Allowed = true
+
 	if annotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
 		glog.V(2).Infof("mutatePod : Annotation %v", annotation)
 		var patchList []patch
 		var patchItem patch
+
 		containersToPatch, err := containersToPatchFromAnnotation([]byte(annotation))
 		if err != nil {
-			glog.Errorf("Patch containers %v", err)
+			glog.Errorf("Failed to get containers to patch %v", err)
 			return toAdmissionResponse(err)
 		}
+
 		glog.V(2).Infof("Patch containers %v", containersToPatch)
+
 		for i, c := range pod.Spec.Containers {
 			if !isContainerPatchNeeded(c.Name, containersToPatch) {
 				continue
+			}
+			sharedCpuTime, err := sharedCpuTimeFromAnnotation([]byte(annotation), c.Name)
+			if err != nil {
+				glog.Errorf("Failed to get shared pool cpu time for containers %v", err)
+				return toAdmissionResponse(err)
 			}
 			glog.V(2).Infof("Adding patches")
 
@@ -149,6 +174,15 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 			patchList = append(patchList, patchItem)
 
+			// Add cpu limit if container requested shared pool cpus
+			if sharedCpuTime > 0 {
+				patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
+				cpuVal := `"` + strconv.Itoa(sharedCpuTime) + `m"`
+				patchItem.Value =
+					json.RawMessage(cpuVal)
+				patchList = append(patchList, patchItem)
+			}
+
 		}
 
 		if len(patchList) > 0 {
@@ -166,7 +200,11 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			patchItem.Value = json.RawMessage(`{"name":"cpu-dp-config","configMap":{ "name":"cpu-dp-configmap"} }`)
 			patchList = append(patchList, patchItem)
 
-			patch, _ := json.Marshal(patchList)
+			patch, err := json.Marshal(patchList)
+			if err != nil {
+				glog.Errorf("Patch marshall error %v:%v", patchList, err)
+				reviewResponse.Allowed = false
+			}
 			reviewResponse.Patch = []byte(patch)
 			pt := v1beta1.PatchTypeJSONPatch
 			reviewResponse.PatchType = &pt
@@ -183,7 +221,7 @@ func serveMutatePod(w http.ResponseWriter, r *http.Request) {
 			body = data
 		}
 	}
-	glog.V(2).Infof("Data  %s", body)
+
 	// verify the content type is accurate
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
@@ -232,6 +270,12 @@ func main() {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		glog.Fatal(err)
+		panic(1)
+	}
+
+	poolConf, err = types.ReadPoolConfig()
+	if err != nil {
+		glog.Errorf("Could not read poolconfig %v", err)
 		panic(1)
 	}
 

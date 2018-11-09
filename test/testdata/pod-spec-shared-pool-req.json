@@ -1,0 +1,144 @@
+{
+    "kind": "AdmissionReview",
+    "request": {
+        "kind": {
+            "kind": "Pod",
+            "version": "v1",
+            "group": ""
+        },
+        "resource": {
+            "resource": "pods",
+            "version": "v1",
+            "group": ""
+        },
+        "uid": "0e8a379c-db6e-11e8-b72a-fa163e875bcf",
+        "object": {
+            "status": {},
+            "spec": {
+                "dnsPolicy": "ClusterFirst",
+                "securityContext": {},
+                "serviceAccountName": "default",
+                "schedulerName": "default-scheduler",
+                "serviceAccount": "default",
+                "terminationGracePeriodSeconds": 30,
+                "restartPolicy": "Always",
+                "volumes": [
+                    {
+                        "secret": {
+                            "secretName": "default-token-lf4p4"
+                        },
+                        "name": "default-token-lf4p4"
+                    }
+                ],
+                "tolerations": [
+                    {
+                        "operator": "Exists",
+                        "tolerationSeconds": 300,
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready"
+                    },
+                    {
+                        "operator": "Exists",
+                        "tolerationSeconds": 300,
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable"
+                    }
+                ],
+                "containers": [
+                    {
+                        "terminationMessagePath": "/dev/termination-log",
+                        "name": "cputestcontainer",
+                        "image": "busyloop",
+                        "args": [
+                            "while true; do sleep 1; done;"
+                        ],
+                        "volumeMounts": [
+                            {
+                                "readOnly": true,
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "default-token-lf4p4"
+                            }
+                        ],
+                        "terminationMessagePolicy": "File",
+                        "command": [
+                            "/bin/bash",
+                            "-c",
+                            "--"
+                        ],
+                        "imagePullPolicy": "IfNotPresent",
+                        "ports": [
+                            {
+                                "protocol": "TCP",
+                                "containerPort": 80
+                            }
+                        ],
+                        "resources": {
+                            "requests": {
+                                "nokia.com/cpupool2": "2",
+                                "nokia.com/sharedpool": "10",
+                                "memory": "2000Mi"
+                            },
+                            "limits": {
+                                "nokia.com/cpupool2": "2",
+                                "nokia.com/sharedpool": "10",
+                                "memory": "2000Mi"
+                            }
+                        }
+                    },
+                    {
+                        "terminationMessagePath": "/dev/termination-log",
+                        "name": "busyloop",
+                        "image": "busyloop",
+                        "args": [
+                            "-c",
+                            "$(EXCLUSIVE_CPUS)",
+                            "-n",
+                            "Process 3"
+                        ],
+                        "volumeMounts": [
+                            {
+                                "readOnly": true,
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "default-token-lf4p4"
+                            }
+                        ],
+                        "terminationMessagePolicy": "File",
+                        "command": [
+                            "/thread_busyloop"
+                        ],
+                        "imagePullPolicy": "IfNotPresent",
+                        "resources": {
+                            "requests": {
+                                "nokia.com/cpupool1": "2",
+                                "memory": "2000Mi"
+                            },
+                            "limits": {
+                                "nokia.com/cpupool1": "2",
+                                "memory": "2000Mi"
+                            }
+                        }
+                    }
+                ]
+            },
+            "metadata": {
+                "creationTimestamp": null,
+                "namespace": "default",
+                "name": "cpupod",
+                "annotations": {
+                    "nokia.k8s.io/cpus": "[{\n\"container\": \"cputestcontainer\",\n\"processes\":\n  [{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"1\"],\n     \"cpus\": 150,\n     \"pool\": \"sharedpool\"\n   },\n   {\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\", \"/thread_busyloop -n \\\"Process \\\"2\"],\n     \"pool\": \"sharedpool\",\n     \"cpus\": 10\n   } \n]\n}]\n"
+                }
+            }
+        },
+        "namespace": "default",
+        "userInfo": {
+            "username": "kubernetes-admin",
+            "groups": [
+                "system:masters",
+                "system:authenticated"
+            ]
+        },
+        "oldObject": null,
+        "operation": "CREATE"
+    },
+    "apiVersion": "admission.k8s.io/v1beta1"
+}

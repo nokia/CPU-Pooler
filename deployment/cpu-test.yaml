@@ -10,8 +10,8 @@ metadata:
         [{
            "process": "/bin/sh",
            "args": ["-c","/thread_busyloop -n \"Process \"1"],
-           "cpus": 1,
-           "pool": "cpupool2"
+           "cpus": 150,
+           "pool": "sharedpool"
          },
          {
            "process": "/bin/sh",
@@ -26,8 +26,6 @@ spec:
   - name: cputestcontainer
     command: [ "/bin/bash", "-c", "--" ]
     args: [ "while true; do sleep 1; done;" ]
-#    command:
-#    - /opt/bin/process_starter
     image: busyloop
     imagePullPolicy: IfNotPresent
     ports:
@@ -35,12 +33,10 @@ spec:
     resources:
       requests:
         memory: 2000Mi
-        nokia.k8s.io/cpupool2: "2"
-        nokia.k8s.io/sharedpool: "10"
+        nokia.k8s.io/sharedpool: "160"
       limits:
         memory: 2000Mi
-        nokia.k8s.io/cpupool2: "2"
-        nokia.k8s.io/sharedpool: "10"
+        nokia.k8s.io/sharedpool: "160"
   - name: busyloop
     image: busyloop
     command:
