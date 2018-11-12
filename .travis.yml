@@ -9,5 +9,5 @@ install:
   - dep ensure
 
 script:
-  - golint ./...
+  - golint -set_exit_status ./cmd/... ./internal/types/
   - go test -v ./...

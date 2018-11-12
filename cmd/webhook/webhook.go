@@ -56,9 +56,9 @@ func containersToPatchFromAnnotation(annotation []byte) ([]string, error) {
 	return containersToPatch, nil
 
 }
-func sharedCpuTimeFromAnnotation(annotation []byte, container string) (int, error) {
+func sharedCPUTimeFromAnnotation(annotation []byte, container string) (int, error) {
 	var cpuAnnotation []types.Container
-	var cpuTime int = 0
+	var cpuTime int
 
 	err := json.Unmarshal(annotation, &cpuAnnotation)
 	if err != nil {
@@ -132,7 +132,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			if !isContainerPatchNeeded(c.Name, containersToPatch) {
 				continue
 			}
-			sharedCpuTime, err := sharedCpuTimeFromAnnotation([]byte(annotation), c.Name)
+			sharedCPUTime, err := sharedCPUTimeFromAnnotation([]byte(annotation), c.Name)
 			if err != nil {
 				glog.Errorf("Failed to get shared pool cpu time for containers %v", err)
 				return toAdmissionResponse(err)
@@ -175,9 +175,9 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			patchList = append(patchList, patchItem)
 
 			// Add cpu limit if container requested shared pool cpus
-			if sharedCpuTime > 0 {
+			if sharedCPUTime > 0 {
 				patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
-				cpuVal := `"` + strconv.Itoa(sharedCpuTime) + `m"`
+				cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
 				patchItem.Value =
 					json.RawMessage(cpuVal)
 				patchList = append(patchList, patchItem)
