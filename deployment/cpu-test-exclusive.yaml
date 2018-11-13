@@ -25,7 +25,5 @@ spec:
     resources:
       requests:
         memory: 2000Mi
-        nokia.k8s.io/cpupool2: "1"
       limits:
         memory: 2000Mi
-        nokia.k8s.io/cpupool2: "1"

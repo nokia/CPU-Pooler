@@ -40,45 +40,6 @@ func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func containersToPatchFromAnnotation(annotation []byte) ([]string, error) {
-	var cpuAnnotation []types.Container
-	var containersToPatch []string
-
-	err := json.Unmarshal(annotation, &cpuAnnotation)
-	if err != nil {
-		glog.Error(err)
-		return nil, err
-	}
-
-	for _, cont := range cpuAnnotation {
-		containersToPatch = append(containersToPatch, cont.Name)
-	}
-	return containersToPatch, nil
-
-}
-func sharedCPUTimeFromAnnotation(annotation []byte, container string) (int, error) {
-	var cpuAnnotation []types.Container
-	var cpuTime int
-
-	err := json.Unmarshal(annotation, &cpuAnnotation)
-	if err != nil {
-		glog.Error(err)
-		return 0, err
-	}
-
-	for _, cont := range cpuAnnotation {
-		if cont.Name == container {
-			for _, process := range cont.Processes {
-				if "shared" == poolConf.Pools[process.PoolName].PoolType {
-					cpuTime += process.CPUs
-				}
-			}
-		}
-	}
-	return cpuTime, nil
-
-}
-
 func isContainerPatchNeeded(containerName string, containersToPatch []string) bool {
 	for _, name := range containersToPatch {
 		if name == containerName {
@@ -90,6 +51,18 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 
 func annotationNameFromConfig() string {
 	return poolConf.ResourceBaseName + "/cpus"
+
+}
+
+func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, cName string) (patchItem patch) {
+	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, cName)
+	cpuVal := `"` + strconv.Itoa(cpuReq) + `"`
+	patchItem.Op = "add"
+	patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolConf.ResourceBaseName + "~1" + pool
+	patchItem.Value =
+		json.RawMessage(cpuVal)
+
+	return patchItem
 
 }
 
@@ -115,16 +88,20 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	reviewResponse.Allowed = true
 
-	if annotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
-		glog.V(2).Infof("mutatePod : Annotation %v", annotation)
+	if podAnnotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
+		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
 		var patchList []patch
 		var patchItem patch
 
-		containersToPatch, err := containersToPatchFromAnnotation([]byte(annotation))
+		cpuAnnotation := types.CPUAnnotation{}
+		err := cpuAnnotation.Decode([]byte(podAnnotation))
+
 		if err != nil {
-			glog.Errorf("Failed to get containers to patch %v", err)
+			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
 		}
+
+		containersToPatch := cpuAnnotation.Containers()
 
 		glog.V(2).Infof("Patch containers %v", containersToPatch)
 
@@ -132,11 +109,8 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			if !isContainerPatchNeeded(c.Name, containersToPatch) {
 				continue
 			}
-			sharedCPUTime, err := sharedCPUTimeFromAnnotation([]byte(annotation), c.Name)
-			if err != nil {
-				glog.Errorf("Failed to get shared pool cpu time for containers %v", err)
-				return toAdmissionResponse(err)
-			}
+			sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name, poolConf)
+
 			glog.V(2).Infof("Adding patches")
 
 			// podinfo volumeMount
@@ -182,7 +156,11 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 					json.RawMessage(cpuVal)
 				patchList = append(patchList, patchItem)
 			}
-
+			// CPU pool recource request/limit from all pools of container
+			for _, pool := range cpuAnnotation.ContainerPools(c.Name) {
+				patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c.Name)
+				patchList = append(patchList, patchItem)
+			}
 		}
 
 		if len(patchList) > 0 {
