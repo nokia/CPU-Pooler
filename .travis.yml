@@ -1,5 +1,10 @@
 language: go
 
+sudo: required
+
+services:
+  - docker
+
 go:
   - "1.10"
 
@@ -9,5 +14,8 @@ install:
   - dep ensure
 
 script:
-  - golint -set_exit_status ./cmd/... ./internal/types/
+  - golint -set_exit_status ./cmd/... ./internal/...
   - go test -v ./...
+  - docker build -t cpudp -f build/Dockerfile.cpudp .
+  - docker build -t cpu-device-webhook -f build/Dockerfile.webhook .
+  - CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' github.com/nokia/CPU-Pooler/cmd/process-starter

@@ -60,9 +60,9 @@ func TestContainerDecodeAnnotation(t *testing.T) {
 
 }
 func TestContainerDecodeAnnotationFail(t *testing.T) {
-	var podannotation_fail = []byte(`["container": "cputestcontainer","processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "cpupool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "cpupool2"} ] } ]`)
+	var podannotationFail = []byte(`["container": "cputestcontainer","processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "cpupool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "cpupool2"} ] } ]`)
 
-	err := cpuAnnotation.Decode([]byte(podannotation_fail))
+	err := cpuAnnotation.Decode([]byte(podannotationFail))
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
 	}
