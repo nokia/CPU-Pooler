@@ -6,6 +6,9 @@ import (
 	"github.com/nokia/CPU-Pooler/internal/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -20,6 +23,28 @@ func init() {
 		panic(1)
 	}
 
+}
+
+func createAdmReviewReq(t *testing.T, containers []corev1.Container) []byte {
+	pod := corev1.Pod{}
+	pod.Spec.Containers = make([]corev1.Container, 0)
+	for _, c := range containers {
+		pod.Spec.Containers = append(pod.Spec.Containers, c)
+	}
+	podjs, err := json.MarshalIndent(&pod, "", "   ")
+	if err != nil {
+		t.FailNow()
+	}
+	admReviewReq := v1beta1.AdmissionReview{}
+	admReq := v1beta1.AdmissionRequest{}
+	admReq.Object.Raw = podjs
+	admReq.Resource = metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	admReviewReq.Request = &admReq
+	ar, err := json.MarshalIndent(&admReviewReq, "", "   ")
+	if err != nil {
+		t.FailNow()
+	}
+	return ar
 }
 
 func (p patch) equal(p2 patch, t *testing.T, checkValue bool) bool {
@@ -84,7 +109,7 @@ func checkPatches(t *testing.T, patches []patch, checkedPatches []patch, expecte
 	}
 }
 
-func handleAndChekAdmReview(t *testing.T, admReviewReq []byte, expectedPatches []patch, unexpectedPatches []patch) error {
+func handleAndChekAdmReview(t *testing.T, admReviewReq []byte, expectedPatches []patch, unexpectedPatches []patch) v1beta1.AdmissionReview {
 	var admReviewResp v1beta1.AdmissionReview
 	var patches []patch
 
@@ -101,14 +126,27 @@ func handleAndChekAdmReview(t *testing.T, admReviewReq []byte, expectedPatches [
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("handler returned wrong status code: got %v want %v",
 			status, http.StatusOK)
+		t.FailNow()
 	}
 	if err := json.Unmarshal([]byte(rr.Body.Bytes()), &admReviewResp); err != nil {
 		t.Errorf("Admission review unmarshal error\n")
+		t.FailNow()
+
 	}
-	if err := json.Unmarshal([]byte(admReviewResp.Response.Patch), &patches); err != nil {
-		t.Errorf("Admission review response patch unmarshal error %v:%v\n", err, rr.Body)
+	if nil != admReviewResp.Response.Patch {
+		if err := json.Unmarshal([]byte(admReviewResp.Response.Patch), &patches); err != nil {
+			t.Errorf("Admission review response patch unmarshal error %v:%v\n", err, rr.Body)
+			t.FailNow()
+		}
+	} else {
+		if expectedPatches != nil {
+			t.Errorf("Patch not received but expected patches defined")
+			t.FailNow()
+		}
 	}
-	checkPatches(t, patches, expectedPatches, true)
+	if expectedPatches != nil {
+		checkPatches(t, patches, expectedPatches, true)
+	}
 	if unexpectedPatches != nil {
 		checkPatches(t, patches, unexpectedPatches, false)
 	}
@@ -117,9 +155,9 @@ func handleAndChekAdmReview(t *testing.T, admReviewReq []byte, expectedPatches [
 		for _, patch := range patches {
 			t.Errorf("%s", patch.toString(t))
 		}
-		return err
+		return admReviewResp
 	}
-	return nil
+	return admReviewResp
 }
 
 func TestMutatePodSharedCpu(t *testing.T) {
@@ -149,10 +187,7 @@ func TestMutatePodSharedCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/containers/0/resources/limits/cpu",
 			Value: json.RawMessage(`"160m"`)},
 	}
-	err = handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
-	if err != nil {
-		t.Errorf("Failed\n")
-	}
+	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }
 
 func TestMutatePodExclusiveCpu(t *testing.T) {
@@ -184,8 +219,31 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/containers/0/resources/limits/cpu",
 			Value: json.RawMessage(`"100m"`)},
 	}
-	err = handleAndChekAdmReview(t, admReviewReq, expectedPatches, unexpectedPatches)
-	if err != nil {
-		t.Errorf("Failed\n")
+	handleAndChekAdmReview(t, admReviewReq, expectedPatches, unexpectedPatches)
+}
+
+func TestInvalidResourceLimitName(t *testing.T) {
+
+	container := corev1.Container{}
+	container.Resources.Limits = make(corev1.ResourceList)
+	container.Resources.Limits["nokia.k8s.io/pool1"] = *resource.NewQuantity(2, resource.BinarySI)
+	container.Name = "Container"
+	ar := createAdmReviewReq(t, []corev1.Container{container})
+	aresp := handleAndChekAdmReview(t, ar, nil, nil)
+	if aresp.Response.Result.Message == "" {
+		t.Errorf("Error status message not set for admission review response %v", aresp.Response.Result.Message)
+	}
+}
+
+func TestInvalidResourceRequestName(t *testing.T) {
+
+	container := corev1.Container{}
+	container.Resources.Requests = make(corev1.ResourceList)
+	container.Resources.Requests["nokia.k8s.io/pool1"] = *resource.NewQuantity(2, resource.BinarySI)
+	container.Name = "Container"
+	ar := createAdmReviewReq(t, []corev1.Container{container})
+	aresp := handleAndChekAdmReview(t, ar, nil, nil)
+	if aresp.Response.Result.Message == "" {
+		t.Errorf("Error status message not set for admission review response %v", aresp.Response.Result.Message)
 	}
 }

@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/golang/glog"
 )
 
@@ -22,6 +23,22 @@ type Container struct {
 
 // CPUAnnotation defines the pod cpu annotation structure
 type CPUAnnotation []Container
+
+const (
+	validationErrNoContainerName int = iota
+	validationErrNoProcesses
+	validationErrNoProcessName
+	validationErrNoCpus
+	validationErrInvalidPool
+)
+
+var validationErrStr = map[int]string{
+	validationErrNoContainerName: "'container' is mandatory in annotation",
+	validationErrNoProcesses:     "'processes' is mandatory in annotation",
+	validationErrNoProcessName:   "'process' (name) is mandatory in annotation",
+	validationErrNoCpus:          "'cpus' field is mandatory in annotation",
+	validationErrInvalidPool:     " not found from pool configuration",
+}
 
 // Containers returns container name string in annotation
 func (cpuAnnotation CPUAnnotation) Containers() []string {
@@ -82,11 +99,33 @@ func (cpuAnnotation CPUAnnotation) ContainerTotalCPURequest(pool string, cName s
 }
 
 // Decode unmarshals json annotation to CPUAnnotation
-func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte) error {
+func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf PoolConfig) error {
 	err := json.Unmarshal(annotation, cpuAnnotation)
 	if err != nil {
 		glog.Error(err)
 		return err
+	}
+	for _, c := range *cpuAnnotation {
+		if len(c.Name) == 0 {
+			return errors.New(validationErrStr[validationErrNoContainerName])
+		}
+		if len(c.Processes) == 0 {
+			return errors.New(validationErrStr[validationErrNoProcesses])
+
+		}
+		for _, p := range c.Processes {
+			if len(p.ProcName) == 0 {
+				return errors.New(validationErrStr[validationErrNoProcessName])
+
+			}
+			if p.CPUs == 0 {
+				return errors.New(validationErrStr[validationErrNoCpus])
+
+			}
+			if _, found := poolConf.Pools[p.PoolName]; !found {
+				return errors.New(p.PoolName + validationErrStr[validationErrInvalidPool])
+			}
+		}
 	}
 	return nil
 }
