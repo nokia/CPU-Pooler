@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
-	"errors"
 	"flag"
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/internal/types"
@@ -20,8 +19,12 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
-var poolConf types.PoolConfig
+var poolerConf *types.PoolerConfig
 
+/*
+var poolConf types.PoolConfig
+var poolConfFileName string
+*/
 type patch struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
@@ -53,25 +56,12 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 }
 
 func annotationNameFromConfig() string {
-	return poolConf.ResourceBaseName + "/cpus"
-
-}
-
-func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, cName string) (patchItem patch) {
-	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, cName)
-	cpuVal := `"` + strconv.Itoa(cpuReq) + `"`
-	patchItem.Op = "add"
-	patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolConf.ResourceBaseName + "~1" + pool
-	patchItem.Value =
-		json.RawMessage(cpuVal)
-
-	return patchItem
+	return poolerConf.ResourceBaseName + "/cpus"
 
 }
 
 func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
-	sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name, poolConf)
 
 	glog.V(2).Infof("Adding patches")
 
@@ -91,7 +81,7 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	//  device plugin config volumeMount.
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
 	patchItem.Value =
-		json.RawMessage(`{"name":"cpu-dp-config","mountPath":"/etc/cpu-dp","readOnly":true}`)
+		json.RawMessage(`{"name":"cpu-pooler-config","mountPath":"/etc/cpu-pooler","readOnly":true}`)
 	patchList = append(patchList, patchItem)
 
 	// Container name to env variable
@@ -110,45 +100,7 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
 
-	// Add cpu limit if container requested shared pool cpus
-	if sharedCPUTime > 0 {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
-		cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
-		patchItem.Value =
-			json.RawMessage(cpuVal)
-		patchList = append(patchList, patchItem)
-	}
-	// CPU pool recource request/limit from all pools of container
-	for _, pool := range cpuAnnotation.ContainerPools(c.Name) {
-		patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c.Name)
-		patchList = append(patchList, patchItem)
-	}
-
 	return patchList, nil
-}
-
-func validateResource(resList corev1.ResourceList) error {
-	resourceBaseNameLen := len(poolConf.ResourceBaseName)
-	for key := range resList {
-		compLen := min(len(key), resourceBaseNameLen)
-		if string(key)[:compLen] == poolConf.ResourceBaseName {
-			poolName := string(key)[resourceBaseNameLen+1:]
-			if _, found := poolConf.Pools[poolName]; !found {
-				return errors.New(poolName + " not found from pool config")
-			}
-		}
-	}
-	return nil
-}
-
-func validateContainerResourceSpec(c *corev1.Container) error {
-	if err := validateResource(c.Resources.Limits); err != nil {
-		return err
-	}
-	if err := validateResource(c.Resources.Requests); err != nil {
-		return err
-	}
-	return nil
 }
 
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -181,7 +133,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
 		cpuAnnotation := types.CPUAnnotation{}
 
-		err = cpuAnnotation.Decode([]byte(podAnnotation), poolConf)
+		err = cpuAnnotation.Decode([]byte(podAnnotation), nil)
 		if err != nil {
 			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
@@ -189,8 +141,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		containersToPatch := cpuAnnotation.Containers()
 		glog.V(2).Infof("Patch containers %v", containersToPatch)
 
-		// Patch container if needed. If no annotation for container, validate
-		// possible CPU-Pooler resource requests/limits
+		// Patch container if needed.
 		for i, c := range pod.Spec.Containers {
 			if isContainerPatchNeeded(c.Name, containersToPatch) {
 				patchList, err = patchContainer(cpuAnnotation, patchList, i, &c)
@@ -198,13 +149,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 					return toAdmissionResponse(err)
 				}
 			}
-		}
-	}
-	// Validate CPU-Pooler resource requests/limits for containers
-	for _, c := range pod.Spec.Containers {
-		err = validateContainerResourceSpec(&c)
-		if err != nil {
-			return toAdmissionResponse(err)
 		}
 	}
 
@@ -224,7 +168,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 		// cpu dp configmap volume
 		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"cpu-dp-config","configMap":{ "name":"cpu-dp-configmap"} }`)
+		patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
 		patchList = append(patchList, patchItem)
 
 		patch, err := json.Marshal(patchList)
@@ -296,15 +240,12 @@ func main() {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		glog.Fatal(err)
-		panic(1)
 	}
 
-	poolConf, err = types.ReadPoolConfig()
+	poolerConf, err = types.ReadPoolerConfig()
 	if err != nil {
-		glog.Errorf("Could not read poolconfig %v", err)
-		panic(1)
+		glog.Fatal(err)
 	}
-
 	http.HandleFunc("/mutating-pods", serveMutatePod)
 	server := &http.Server{
 		Addr:         ":443",

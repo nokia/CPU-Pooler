@@ -91,11 +91,12 @@ func main() {
 	var cmds []*exec.Cmd
 	completionChannel := make(chan int, 10)
 	myContainerName := os.Getenv("CONTAINER_NAME")
+	poolConfigFileName := os.Getenv("POOL_CONFIG_FILE")
 	exclCPUs := os.Getenv("EXCLUSIVE_CPUS")
 	exclCPUList := cpuListStrToIntSlice(exclCPUs)
 	fmt.Printf("Exclusive cpu list %v\n", exclCPUList)
 
-	poolConf, err := types.ReadPoolConfig()
+	poolConf, err := types.ReadPoolConfigFile(poolConfigFileName)
 	if err != nil {
 		panic("Configuration error")
 	}

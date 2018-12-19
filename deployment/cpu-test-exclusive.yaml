@@ -10,8 +10,8 @@ metadata:
         [{
            "process": "/bin/sh",
            "args": ["-c","/thread_busyloop -n \"Process \"cputest-exclusive"],
-           "cpus": 1,
-           "pool": "cpupool2"
+           "cpus": 3,
+           "pool": "cpupool1"
          } 
       ]
       }]
@@ -25,5 +25,7 @@ spec:
     resources:
       requests:
         memory: 2000Mi
+        nokia.k8s.io/cpupool1: "3"
       limits:
         memory: 2000Mi
+        nokia.k8s.io/cpupool1: "3"
