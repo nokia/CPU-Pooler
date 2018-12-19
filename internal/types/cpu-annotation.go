@@ -99,7 +99,7 @@ func (cpuAnnotation CPUAnnotation) ContainerTotalCPURequest(pool string, cName s
 }
 
 // Decode unmarshals json annotation to CPUAnnotation
-func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf PoolConfig) error {
+func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf *PoolConfig) error {
 	err := json.Unmarshal(annotation, cpuAnnotation)
 	if err != nil {
 		glog.Error(err)
@@ -122,8 +122,10 @@ func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf PoolConfi
 				return errors.New(validationErrStr[validationErrNoCpus])
 
 			}
-			if _, found := poolConf.Pools[p.PoolName]; !found {
-				return errors.New(p.PoolName + validationErrStr[validationErrInvalidPool])
+			if nil != poolConf {
+				if _, found := poolConf.Pools[p.PoolName]; !found {
+					return errors.New(p.PoolName + validationErrStr[validationErrInvalidPool])
+				}
 			}
 		}
 	}

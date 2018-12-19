@@ -15,12 +15,12 @@ The process-starter binary has to be installed to host file system in `/opt/bin`
 
 ### CPU pools
 
-CPU pools are configured with a configMap named cpu-dp-configmap. The schema of configMap is as follows:
+CPU pools are configured with a configMap named cpu-pooler-configmap. The schema of configMap is as follows:
 ```
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cpu-dp-configmap
+  name: cpu-pooler-configmap
 data:
   poolconfig.yaml: |
     resourceBaseName: <name>
@@ -36,7 +36,7 @@ The resurceBaseName is the advertised resource name without the resource - i.e o
 
 ### Pod spec
 
-The cpu-device-plugin advertises the resources as name: `<resoruceBaseName>/<poolname>`. The poolname is pool name configured in cpu-dp-configmap. The cpus are requested in the resources section of container in the pod spec.
+The cpu-device-plugin advertises the resources as name: `<resoruceBaseName>/<poolname>`. The poolname is pool name configured in cpu-pooler-configmap. The cpus are requested in the resources section of container in the pod spec.
 
 ### Annotation:
 
@@ -127,7 +127,7 @@ $ cp process-starter /opt/bin/
 
 Create cpu-device-plugin config and daemonset:
 ```
-$ kubectl create -f deployment/cpu-dp-config.yaml
+$ kubectl create -f deployment/cpu-pooler-config.yaml
 $ kubectl create -f deployment/cpu-dev-ds.yaml
 ```
 There is a helper script ```./scripts/generate_cert.sh``` that generates certificate and key for the webhook admission controller. The script ```deployment/create-webhook-conf.sh``` can be used to create the webhook configuration from the provided manifest file (```webhook-conf.yaml```).
