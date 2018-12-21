@@ -22,8 +22,9 @@ kind: ConfigMap
 metadata:
   name: cpu-pooler-configmap
 data:
-  poolconfig.yaml: |
-    resourceBaseName: <name>
+  cpu-pooler.yaml: |
+    resourceBaseName: "<name>"
+  poolconfig-<name>.yaml: |
     pools:
       <poolname1>:
         cpus : "<list of cpus"
@@ -31,8 +32,14 @@ data:
       <poolname2>:
         cpus : "<list of cpus>"
         pooltype: "exclusive|shared"
+      nodeSelector:
+        <key> : <value>
 ```
-The resurceBaseName is the advertised resource name without the resource - i.e only the `vendor-domain`. Pool name from the config will be the resource in the fully qualified resource name (`<resurceBaseName>/<pool name>`). In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu).
+The cpu-pooler.yaml file must exist in the data section. It defines the resourceBaseName field which is the advertised resource name without the resource - i.e only the `vendor-domain`.
+The cpu pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
+Pool name from the config will be the resource in the fully qualified resource name (`<resurceBaseName>/<pool name>`). The nodeSelector is used to tell in which node this pool configuration is used.
+
+In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu). Nodes for the pool configurations are selected by `nodeType` label.
 
 ### Pod spec
 

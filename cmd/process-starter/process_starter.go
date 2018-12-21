@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/nokia/CPU-Pooler/internal/types"
 	"golang.org/x/sys/unix"
@@ -84,9 +85,10 @@ func cpuListStrToIntSlice(cpuString string) (cpuList []int) {
 }
 
 func main() {
+	flag.Parse()
 	containers, err := readCPUAnnotation()
 	if err != nil {
-		os.Exit(1)
+		panic("Cannot read pod cpu annotation")
 	}
 	var cmds []*exec.Cmd
 	completionChannel := make(chan int, 10)
@@ -102,8 +104,7 @@ func main() {
 	}
 
 	if myContainerName == "" {
-		fmt.Printf("CONTAINER_NAME envrionment variable not found")
-		os.Exit(1)
+		panic("CONTAINER_NAME envrionment variable not found")
 	}
 	for _, container := range containers {
 		if container.Name != myContainerName {

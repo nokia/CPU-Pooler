@@ -63,8 +63,7 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 		err = yaml.Unmarshal([]byte(file), &pools)
 		if err != nil {
 			glog.Errorf("Error in poolconfig file %v", err)
-			return PoolConfig{}, err
 		}
 	}
-	return pools, nil
+	return pools, err
 }
