@@ -7,24 +7,19 @@ data:
     resourceBaseName: "nokia.k8s.io"
   poolconfig-controller.yaml: |
     pools: 
-      cpupool1:
+      exclusive-pool:
         cpus : "4,5"
-        pooltype: "exclusive"
-      cpupool2:
+      exclusive-pool-2:
         cpus : "2,3"
-        pooltype: "exclusive"
-      sharedpool:
+      shared-pool:
         cpus : "1"
-        pooltype: "shared"
     nodeSelector:
       nodeType: controller
   poolconfig-dpdk.yaml: |
     pools: 
-      cpupool1:
+      exclusive-pool:
         cpus : "2,3,4,5,6,7"
-        pooltype: "exclusive"
-      sharedpool:
+      shared-pool:
         cpus : "1"
-        pooltype: "shared"
     nodeSelector:
       nodeType: dpdk

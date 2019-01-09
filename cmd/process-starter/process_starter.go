@@ -116,8 +116,7 @@ func main() {
 			fmt.Printf("    Args: %v ", process.Args)
 			fmt.Printf("\n")
 			cmd := exec.Command(process.ProcName, process.Args...)
-
-			if poolConf.Pools[process.PoolName].PoolType == "exclusive" {
+			if strings.HasPrefix(process.PoolName, "exclusive") {
 				exclCPUList = setAffinity(process.CPUs, exclCPUList)
 			} else {
 				/* It is shared pool */

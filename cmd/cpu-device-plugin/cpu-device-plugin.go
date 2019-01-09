@@ -28,6 +28,7 @@ type cpuDeviceManager struct {
 	socketFile     string
 	grpcServer     *grpc.Server
 	sharedPoolCPUs string
+	poolType       string
 }
 
 func (cdm *cpuDeviceManager) PreStartContainer(ctx context.Context, psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
@@ -93,7 +94,7 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 	for {
 		if updateNeeded {
 			resp := new(pluginapi.ListAndWatchResponse)
-			if cdm.pool.PoolType == "shared" {
+			if cdm.poolType == "shared" {
 				nbrOfCPUs := len(strings.Split(cdm.pool.CPUs, ","))
 				for i := 0; i < nbrOfCPUs*1000; i++ {
 					cpuID := strconv.Itoa(i)
@@ -126,7 +127,7 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 		for _, id := range container.DevicesIDs {
 			cpusAllocated = cpusAllocated + id + ","
 		}
-		if cdm.pool.PoolType == "shared" {
+		if cdm.poolType == "shared" {
 			envmap["SHARED_CPUS"] = cdm.sharedPoolCPUs
 		} else {
 			envmap["EXCLUSIVE_CPUS"] = cpusAllocated[:len(cpusAllocated)-1]
@@ -173,12 +174,20 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 
 func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
 
+	var poolType string
 	glog.Infof("Starting plugin for pool: %s", poolName)
+
+	if strings.HasPrefix(poolName, "shared") {
+		poolType = "shared"
+	} else {
+		poolType = "exclusive"
+	}
 
 	return &cpuDeviceManager{
 		pool:           pool,
 		socketFile:     fmt.Sprintf("cpudp_%s.sock", poolName),
 		sharedPoolCPUs: sharedCPUs,
+		poolType:       poolType,
 	}
 
 }
@@ -208,7 +217,7 @@ func createPluginsForPools() error {
 
 	glog.Infof("Pool configuration %v", poolConf)
 	for poolName, pool := range poolConf.Pools {
-		if pool.PoolType == "shared" {
+		if strings.HasPrefix(poolName, "shared") {
 			sharedCPUs = pool.CPUs
 		}
 		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)

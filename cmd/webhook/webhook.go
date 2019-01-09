@@ -31,13 +31,6 @@ type patch struct {
 	Value json.RawMessage `json:"value"`
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	return &v1beta1.AdmissionResponse{
 		Result: &metav1.Status{
@@ -59,11 +52,27 @@ func annotationNameFromConfig() string {
 	return poolerConf.ResourceBaseName + "/cpus"
 
 }
+func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, c *corev1.Container) (patchItem patch) {
+	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, c.Name)
+	cpuVal := `"` + strconv.Itoa(cpuReq) + `"`
+	patchItem.Op = "add"
+	if len(c.Resources.Limits) > 0 {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolerConf.ResourceBaseName + "~1" + pool
+		patchItem.Value = json.RawMessage(cpuVal)
+	} else {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources"
+		patchItem.Value = json.RawMessage(`{ "limits": { "` + poolerConf.ResourceBaseName + "/" + pool + `":` + cpuVal + ` } }`)
+	}
+
+	return patchItem
+}
 
 func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
 
 	glog.V(2).Infof("Adding patches")
+
+	sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name)
 
 	// podinfo volumeMount
 	patchItem.Op = "add"
@@ -99,6 +108,25 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/command"
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
+
+	// Add cpu limit if container requested shared pool cpus
+	if sharedCPUTime > 0 {
+		cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
+		if len(c.Resources.Limits) > 0 {
+			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
+			patchItem.Value =
+				json.RawMessage(cpuVal)
+		} else {
+			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources"
+			patchItem.Value = json.RawMessage(`{ "limits": { "cpu":` + cpuVal + ` } }`)
+		}
+		patchList = append(patchList, patchItem)
+	}
+	// CPU pool recource request/limit from all pools of container
+	for _, pool := range cpuAnnotation.ContainerPools(c.Name) {
+		patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c)
+		patchList = append(patchList, patchItem)
+	}
 
 	return patchList, nil
 }
@@ -139,6 +167,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			return toAdmissionResponse(err)
 		}
 		containersToPatch := cpuAnnotation.Containers()
+
 		glog.V(2).Infof("Patch containers %v", containersToPatch)
 
 		// Patch container if needed.

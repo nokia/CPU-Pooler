@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/golang/glog"
+	"strings"
 )
 
 // Process defines process information in pod annotation
@@ -51,13 +52,13 @@ func (cpuAnnotation CPUAnnotation) Containers() []string {
 }
 
 // ContainerSharedCPUTime returns sum of cpu time requested from shared pool by a container
-func (cpuAnnotation CPUAnnotation) ContainerSharedCPUTime(container string, poolConf PoolConfig) int {
+func (cpuAnnotation CPUAnnotation) ContainerSharedCPUTime(container string) int {
 	var cpuTime int
 
 	for _, cont := range cpuAnnotation {
 		if cont.Name == container {
 			for _, process := range cont.Processes {
-				if "shared" == poolConf.Pools[process.PoolName].PoolType {
+				if strings.HasPrefix(process.PoolName, "shared") {
 					cpuTime += process.CPUs
 				}
 			}

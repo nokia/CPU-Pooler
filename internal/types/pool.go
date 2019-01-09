@@ -10,8 +10,7 @@ import (
 
 // Pool defines cpupool
 type Pool struct {
-	CPUs     string `yaml:"cpus"`
-	PoolType string `yaml:"pooltype"`
+	CPUs string `yaml:"cpus"`
 }
 
 // PoolConfig defines pool configurtion for a node
