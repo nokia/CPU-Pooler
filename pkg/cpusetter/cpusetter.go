@@ -44,10 +44,9 @@ func main() {
   // Wait until Controller pushes a signal on the stop channel
   select {
     case <-stopChannel:
-      log.Fatal("CCPUSetter's Controller stopped abruptly, exiting!")
+      log.Fatal("CPUSetter's Controller stopped abruptly, exiting!")
     case <-signalChannel:
       log.Println("Orchestrator initiated graceful shutdown. See you soon!")
-      os.Exit(0)
   }
 }
 

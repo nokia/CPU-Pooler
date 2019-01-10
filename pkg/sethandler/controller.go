@@ -11,6 +11,7 @@ import (
   origType "github.com/Levovar/CPU-Pooler/internal/types"
   "github.com/Levovar/CPU-Pooler/pkg/types"
   "github.com/intel/multus-cni/checkpoint"
+  multusTypes "github.com/intel/multus-cni/types"
   "k8s.io/api/core/v1"
   "k8s.io/client-go/informers"
   "k8s.io/client-go/kubernetes"
@@ -88,12 +89,16 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
     log.Println("WARNING: Container: " + container.Name + " in Pod: " + podIdStr + " asked for exclusive CPUs, but were not allocated any! Cannot adjust its default cpuset")
     return nil,nil
   }
+  return calculateFinalExclusiveSet(exclusiveCpus,pod,container)
+}
+
+func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.Pod, container v1.Container) ([]int,error) {
   var finalCpuSet []int
   var doesSetContainPinnerCore bool
   for _, deviceId := range exclusiveCpus.DeviceIDs {
     idAsInt, err := strconv.Atoi(deviceId)
     if err!=nil {
-      return nil, errors.New("Device ID: " + deviceId + " for Container: " + container.Name + " in Pod: " + podIdStr + " is invalid")
+      return nil, errors.New("Device ID: " + deviceId + " for Container: " + container.Name + " in Pod: " + string(pod.ObjectMeta.UID) + " is invalid")
     }
     finalCpuSet = append(finalCpuSet, idAsInt)
     if idAsInt == dedicatedPinnerCoreId {
@@ -101,18 +106,11 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
     }
   }
   if isPinnerUsedByContainer(pod,container.Name) && !doesSetContainPinnerCore {
+    //1: Container is asking exclusive CPUs + 2: Container has a pool configured in the annotation = Pinner will be used
+    //If pinner is used by a container, we need to the add the configured CPU core holding its thread to their cpuset
     finalCpuSet = append(finalCpuSet, dedicatedPinnerCoreId)
   }
   return finalCpuSet,nil
-}
-
-func determineCid(podStatus v1.PodStatus, containerName string) string {
-  for _,containerStatus := range podStatus.ContainerStatuses {
-    if containerStatus.Name == containerName {
-      return containerStatus.ContainerID
-    } 
-  }
-  return ""
 }
 
 func isPinnerUsedByContainer(pod v1.Pod,containerName string) bool {
@@ -124,13 +122,21 @@ func isPinnerUsedByContainer(pod v1.Pod,containerName string) bool {
         return false
       }
       containerConfig := processConfig.ContainerPools(containerName)
-      //1: Container is asking exclusive CPUs + 2: Container has a pool configured in the annotation = Pinner will be used
       if len(containerConfig) > 0 {
         return true
       }
     }
   }
   return false
+}
+
+func determineCid(podStatus v1.PodStatus, containerName string) string {
+  for _,containerStatus := range podStatus.ContainerStatuses {
+    if containerStatus.Name == containerName {
+      return containerStatus.ContainerID
+    } 
+  }
+  return ""
 }
 
 func (setHandler *SetHandler) applyCpusetToContainer(containerId string, cpuset []int) {
