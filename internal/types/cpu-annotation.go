@@ -30,7 +30,6 @@ const (
 	validationErrNoProcesses
 	validationErrNoProcessName
 	validationErrNoCpus
-	validationErrInvalidPool
 )
 
 var validationErrStr = map[int]string{
@@ -38,7 +37,6 @@ var validationErrStr = map[int]string{
 	validationErrNoProcesses:     "'processes' is mandatory in annotation",
 	validationErrNoProcessName:   "'process' (name) is mandatory in annotation",
 	validationErrNoCpus:          "'cpus' field is mandatory in annotation",
-	validationErrInvalidPool:     " not found from pool configuration",
 }
 
 // Containers returns container name string in annotation
@@ -100,7 +98,7 @@ func (cpuAnnotation CPUAnnotation) ContainerTotalCPURequest(pool string, cName s
 }
 
 // Decode unmarshals json annotation to CPUAnnotation
-func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf *PoolConfig) error {
+func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte) error {
 	err := json.Unmarshal(annotation, cpuAnnotation)
 	if err != nil {
 		glog.Error(err)
@@ -122,11 +120,6 @@ func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte, poolConf *PoolConf
 			if p.CPUs == 0 {
 				return errors.New(validationErrStr[validationErrNoCpus])
 
-			}
-			if nil != poolConf {
-				if _, found := poolConf.Pools[p.PoolName]; !found {
-					return errors.New(p.PoolName + validationErrStr[validationErrInvalidPool])
-				}
 			}
 		}
 	}

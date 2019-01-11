@@ -21,10 +21,6 @@ var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var poolerConf *types.PoolerConfig
 
-/*
-var poolConf types.PoolConfig
-var poolConfFileName string
-*/
 type patch struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
@@ -134,7 +130,6 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(2).Info("mutating pods")
 	var err error
-	var patchList []patch
 
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 	if ar.Request.Resource != podResource {
@@ -159,9 +154,11 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Mutate containers if cpu annotation exists.
 	if podAnnotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
 		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
+		var patchList []patch
+
 		cpuAnnotation := types.CPUAnnotation{}
 
-		err = cpuAnnotation.Decode([]byte(podAnnotation), nil)
+		err = cpuAnnotation.Decode([]byte(podAnnotation))
 		if err != nil {
 			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
@@ -179,37 +176,38 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 				}
 			}
 		}
-	}
+		// Add volumes if any container was patched
+		if len(patchList) > 0 {
+			var patchItem patch
+			patchItem.Op = "add"
 
-	// Add volumes if any container was patched
-	if len(patchList) > 0 {
-		var patchItem patch
-		patchItem.Op = "add"
+			// podinfo volume
+			patchItem.Path = "/spec/volumes/-"
+			patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
+			patchList = append(patchList, patchItem)
+			// hostbin volume
+			patchItem.Path = "/spec/volumes/-"
+			patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
+			patchList = append(patchList, patchItem)
 
-		// podinfo volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
-		patchList = append(patchList, patchItem)
-		// hostbin volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
-		patchList = append(patchList, patchItem)
+			// cpu dp configmap volume
+			patchItem.Path = "/spec/volumes/-"
+			patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
+			patchList = append(patchList, patchItem)
 
-		// cpu dp configmap volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
-		patchList = append(patchList, patchItem)
-
-		patch, err := json.Marshal(patchList)
-		if err != nil {
-			glog.Errorf("Patch marshall error %v:%v", patchList, err)
-			reviewResponse.Allowed = false
-			return toAdmissionResponse(err)
+			patch, err := json.Marshal(patchList)
+			if err != nil {
+				glog.Errorf("Patch marshall error %v:%v", patchList, err)
+				reviewResponse.Allowed = false
+				return toAdmissionResponse(err)
+			}
+			reviewResponse.Patch = []byte(patch)
+			pt := v1beta1.PatchTypeJSONPatch
+			reviewResponse.PatchType = &pt
 		}
-		reviewResponse.Patch = []byte(patch)
-		pt := v1beta1.PatchTypeJSONPatch
-		reviewResponse.PatchType = &pt
+
 	}
+
 	return &reviewResponse
 }
 

@@ -17,12 +17,6 @@ var cpuAnnotation = CPUAnnotation{
 		{ProcName: "proc7", Args: []string{"-c", "1"}, CPUs: 300, PoolName: "shared-pool3"},
 	}}}
 
-var poolConfig = PoolConfig{Pools: map[string]Pool{
-	"shared-pool1":    {CPUs: "2,3"},
-	"exclusive-pool2": {CPUs: "4,5"},
-	"shared-pool3":    {CPUs: "7,8"},
-}}
-
 func TestGetContainerPools(t *testing.T) {
 	pools := cpuAnnotation.ContainerPools("Container1")
 
@@ -53,7 +47,7 @@ func TestContainerSharedCPUTime(t *testing.T) {
 func TestContainerDecodeAnnotation(t *testing.T) {
 	var podannotation = []byte(`[{"container": "cputestcontainer","processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "shared-pool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "exclusive-pool2"} ] } ]`)
 	ca := CPUAnnotation{}
-	ca.Decode([]byte(podannotation), &poolConfig)
+	ca.Decode([]byte(podannotation))
 	pools := ca.ContainerPools("cputestcontainer")
 	if !reflect.DeepEqual(pools, []string{"shared-pool1", "exclusive-pool2"}) {
 		t.Errorf("Failed to get pool %v", pools)
@@ -63,7 +57,7 @@ func TestContainerDecodeAnnotation(t *testing.T) {
 func TestContainerDecodeAnnotationUnmarshalFail(t *testing.T) {
 	var podannotationFail = []byte(`["container": "cputestcontainer","processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "cpupool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "cpupool2"} ] } ]`)
 	ca := CPUAnnotation{}
-	err := ca.Decode([]byte(podannotationFail), &poolConfig)
+	err := ca.Decode([]byte(podannotationFail))
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
 	}
@@ -73,7 +67,7 @@ func TestContainerDecodeAnnotationUnmarshalFail(t *testing.T) {
 func TestContainerDecodeAnnotationNoContainerName(t *testing.T) {
 	var podannotation = []byte(`[{"processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "pool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "pool2"} ] } ]`)
 	ca := CPUAnnotation{}
-	err := ca.Decode([]byte(podannotation), &poolConfig)
+	err := ca.Decode([]byte(podannotation))
 
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
@@ -88,7 +82,7 @@ func TestContainerDecodeAnnotationNoContainerName(t *testing.T) {
 func TestContainerDecodeAnnotationNoProcessName(t *testing.T) {
 	var podannotation = []byte(`[{"container": "cputestcontainer","processes":  [{"args": ["-c","/thread_busyloop"], "cpus": 1,"pool": "pool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "pool2"} ] } ]`)
 	ca := CPUAnnotation{}
-	err := ca.Decode([]byte(podannotation), &poolConfig)
+	err := ca.Decode([]byte(podannotation))
 
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
@@ -102,7 +96,7 @@ func TestContainerDecodeAnnotationNoProcessName(t *testing.T) {
 func TestContainerDecodeAnnotationNoProcesses(t *testing.T) {
 	var podannotation = []byte(`[{"container": "cputestcontainer" } ]`)
 	ca := CPUAnnotation{}
-	err := ca.Decode([]byte(podannotation), &poolConfig)
+	err := ca.Decode([]byte(podannotation))
 
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
@@ -116,7 +110,7 @@ func TestContainerDecodeAnnotationNoProcesses(t *testing.T) {
 func TestContainerDecodeAnnotationNoCpus(t *testing.T) {
 	var podannotation = []byte(`[{"container": "cputestcontainer","processes":  [{"process": "/bin/sh","args": ["-c","/thread_busyloop"], "pool": "pool1"},{"process": "/bin/sh","args": ["-c","/thread_busyloop2"], "cpus": 2,"pool": "pool2"} ] } ]`)
 	ca := CPUAnnotation{}
-	err := ca.Decode([]byte(podannotation), &poolConfig)
+	err := ca.Decode([]byte(podannotation))
 	if err == nil {
 		t.Errorf("Decode unexpectedly succeeded\n")
 		return
