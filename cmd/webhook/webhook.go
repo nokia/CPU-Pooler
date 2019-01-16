@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/internal/types"
@@ -127,8 +128,30 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	return patchList, nil
 }
 
+func patchVolumes(patchList []patch) []patch {
+	var patchItem patch
+	patchItem.Op = "add"
+
+	// podinfo volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
+	patchList = append(patchList, patchItem)
+	// hostbin volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
+	patchList = append(patchList, patchItem)
+
+	// cpu dp configmap volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
+	patchList = append(patchList, patchItem)
+	return patchList
+
+}
+
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(2).Info("mutating pods")
+	var patchList []patch
 	var err error
 
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
@@ -154,7 +177,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Mutate containers if cpu annotation exists.
 	if podAnnotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
 		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
-		var patchList []patch
 
 		cpuAnnotation := types.CPUAnnotation{}
 
@@ -178,34 +200,24 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		}
 		// Add volumes if any container was patched
 		if len(patchList) > 0 {
-			var patchItem patch
-			patchItem.Op = "add"
-
-			// podinfo volume
-			patchItem.Path = "/spec/volumes/-"
-			patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
-			patchList = append(patchList, patchItem)
-			// hostbin volume
-			patchItem.Path = "/spec/volumes/-"
-			patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
-			patchList = append(patchList, patchItem)
-
-			// cpu dp configmap volume
-			patchItem.Path = "/spec/volumes/-"
-			patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
-			patchList = append(patchList, patchItem)
-
-			patch, err := json.Marshal(patchList)
-			if err != nil {
-				glog.Errorf("Patch marshall error %v:%v", patchList, err)
-				reviewResponse.Allowed = false
-				return toAdmissionResponse(err)
-			}
-			reviewResponse.Patch = []byte(patch)
-			pt := v1beta1.PatchTypeJSONPatch
-			reviewResponse.PatchType = &pt
+			patchList = patchVolumes(patchList)
+		} else {
+			glog.Errorf("CPU annotation exists but no container was patched %v:%v",
+				cpuAnnotation, pod.Spec.Containers)
+			return toAdmissionResponse(errors.New("CPU Annotation error"))
 		}
 
+	}
+	if len(patchList) > 0 {
+		patch, err := json.Marshal(patchList)
+		if err != nil {
+			glog.Errorf("Patch marshall error %v:%v", patchList, err)
+			reviewResponse.Allowed = false
+			return toAdmissionResponse(err)
+		}
+		reviewResponse.Patch = []byte(patch)
+		pt := v1beta1.PatchTypeJSONPatch
+		reviewResponse.PatchType = &pt
 	}
 
 	return &reviewResponse
