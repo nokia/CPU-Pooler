@@ -15,28 +15,33 @@ The process-starter binary has to be installed to host file system in `/opt/bin`
 
 ### CPU pools
 
-CPU pools are configured with a configMap named cpu-dp-configmap. The schema of configMap is as follows:
+CPU pools are configured with a configMap named cpu-pooler-configmap. The schema of configMap is as follows:
 ```
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cpu-dp-configmap
+  name: cpu-pooler-configmap
 data:
-  poolconfig.yaml: |
-    resourceBaseName: <name>
+  cpu-pooler.yaml: |
+    resourceBaseName: "<name>"
+  poolconfig-<name>.yaml: |
     pools:
       <poolname1>:
         cpus : "<list of cpus"
-        pooltype: "exclusive|shared"
       <poolname2>:
         cpus : "<list of cpus>"
-        pooltype: "exclusive|shared"
+      nodeSelector:
+        <key> : <value>
 ```
-The resurceBaseName is the advertised resource name without the resource - i.e only the `vendor-domain`. Pool name from the config will be the resource in the fully qualified resource name (`<resurceBaseName>/<pool name>`). In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu).
+The cpu-pooler.yaml file must exist in the data section. It defines the resourceBaseName field which is the advertised resource name without the resource - i.e only the `vendor-domain`.
+The cpu pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
+Pool name from the config will be the resource in the fully qualified resource name (`<resurceBaseName>/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive cpu pool or 'shared' for shared cpu pool. The nodeSelector is used to tell in which node this pool configuration is used. CPU pooler reads the node labels and selects the config that matches the nodeSelector.
+
+In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu). Nodes for the pool configurations are selected by `nodeType` label.
 
 ### Pod spec
 
-The cpu-device-plugin advertises the resources as name: `<resoruceBaseName>/<poolname>`. The poolname is pool name configured in cpu-dp-configmap. The cpus are requested in the resources section of container in the pod spec.
+The cpu-device-plugin advertises the resources as name: `<resoruceBaseName>/<poolname>`. The poolname is pool name configured in cpu-pooler-configmap. The cpus are requested in the resources section of container in the pod spec.
 
 ### Annotation:
 
@@ -127,7 +132,7 @@ $ cp process-starter /opt/bin/
 
 Create cpu-device-plugin config and daemonset:
 ```
-$ kubectl create -f deployment/cpu-dp-config.yaml
+$ kubectl create -f deployment/cpu-pooler-config.yaml
 $ kubectl create -f deployment/cpu-dev-ds.yaml
 ```
 There is a helper script ```./scripts/generate_cert.sh``` that generates certificate and key for the webhook admission controller. The script ```deployment/create-webhook-conf.sh``` can be used to create the webhook configuration from the provided manifest file (```webhook-conf.yaml```).

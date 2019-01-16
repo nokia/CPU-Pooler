@@ -10,8 +10,8 @@ metadata:
         [{
            "process": "/bin/sh",
            "args": ["-c","/thread_busyloop -n \"Process \"cputest-exclusive"],
-           "cpus": 1,
-           "pool": "cpupool2"
+           "cpus": 3,
+           "pool": "exclusive-pool"
          } 
       ]
       }]
@@ -22,8 +22,3 @@ spec:
     imagePullPolicy: IfNotPresent
     ports:
     - containerPort: 80
-    resources:
-      requests:
-        memory: 2000Mi
-      limits:
-        memory: 2000Mi

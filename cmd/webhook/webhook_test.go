@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"net/http/httptest"
@@ -16,15 +15,14 @@ import (
 )
 
 func init() {
+	types.PoolerConfigDir = "../../test/testdata/cpu-pooler"
 	var err error
-	types.PoolConfigFile = "../../test/testdata/poolconfig.yaml"
-	poolConf, err = types.ReadPoolConfig()
+	poolerConf, err = types.ReadPoolerConfig()
 	if err != nil {
-		panic(1)
+		panic(err)
 	}
 
 }
-
 func createAdmReviewReq(t *testing.T, containers []corev1.Container) []byte {
 	pod := corev1.Pod{}
 	pod.Spec.Containers = make([]corev1.Container, 0)
@@ -173,7 +171,7 @@ func TestMutatePodSharedCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"mountPath":"/etc/cpu-dp","readOnly":true,"name":"cpu-dp-config"}`)},
+			Value: json.RawMessage(`{"mountPath":"/etc/cpu-pooler","readOnly":true,"name":"cpu-pooler-config"}`)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
@@ -183,9 +181,7 @@ func TestMutatePodSharedCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"cpu-dp-config","configMap":{ "name":"cpu-dp-configmap"} }`)},
-		patch{Op: "add", Path: "/spec/containers/0/resources/limits/cpu",
-			Value: json.RawMessage(`"160m"`)},
+			Value: json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }
@@ -203,7 +199,7 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"mountPath":"/etc/cpu-dp","readOnly":true,"name":"cpu-dp-config"}`)},
+			Value: json.RawMessage(`{"mountPath":"/etc/cpu-pooler","readOnly":true,"name":"cpu-pooler-config"}`)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
@@ -213,37 +209,7 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"cpu-dp-config","configMap":{ "name":"cpu-dp-configmap"} }`)},
+			Value: json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)},
 	}
-	unexpectedPatches := []patch{
-		patch{Op: "add", Path: "/spec/containers/0/resources/limits/cpu",
-			Value: json.RawMessage(`"100m"`)},
-	}
-	handleAndChekAdmReview(t, admReviewReq, expectedPatches, unexpectedPatches)
-}
-
-func TestInvalidResourceLimitName(t *testing.T) {
-
-	container := corev1.Container{}
-	container.Resources.Limits = make(corev1.ResourceList)
-	container.Resources.Limits["nokia.k8s.io/pool1"] = *resource.NewQuantity(2, resource.BinarySI)
-	container.Name = "Container"
-	ar := createAdmReviewReq(t, []corev1.Container{container})
-	aresp := handleAndChekAdmReview(t, ar, nil, nil)
-	if aresp.Response.Result.Message == "" {
-		t.Errorf("Error status message not set for admission review response %v", aresp.Response.Result.Message)
-	}
-}
-
-func TestInvalidResourceRequestName(t *testing.T) {
-
-	container := corev1.Container{}
-	container.Resources.Requests = make(corev1.ResourceList)
-	container.Resources.Requests["nokia.k8s.io/pool1"] = *resource.NewQuantity(2, resource.BinarySI)
-	container.Name = "Container"
-	ar := createAdmReviewReq(t, []corev1.Container{container})
-	aresp := handleAndChekAdmReview(t, ar, nil, nil)
-	if aresp.Response.Result.Message == "" {
-		t.Errorf("Error status message not set for admission review response %v", aresp.Response.Result.Message)
-	}
+	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }

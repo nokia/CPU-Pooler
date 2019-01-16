@@ -1,0 +1,10 @@
+resourceBaseName: "nokia.k8s.io"
+pools: 
+  exclusive-cpupool1:
+    cpus : "4,5"
+  exclusive-cpupool2:
+    cpus : "2,3"
+  sharedpool:
+    cpus : "1"
+nodeSelector:
+  nodeType: controller

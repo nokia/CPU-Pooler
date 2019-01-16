@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/nokia/CPU-Pooler/internal/types"
 	"golang.org/x/sys/unix"
@@ -84,25 +85,26 @@ func cpuListStrToIntSlice(cpuString string) (cpuList []int) {
 }
 
 func main() {
+	flag.Parse()
 	containers, err := readCPUAnnotation()
 	if err != nil {
-		os.Exit(1)
+		panic("Cannot read pod cpu annotation")
 	}
 	var cmds []*exec.Cmd
 	completionChannel := make(chan int, 10)
 	myContainerName := os.Getenv("CONTAINER_NAME")
+	poolConfigFileName := os.Getenv("POOL_CONFIG_FILE")
 	exclCPUs := os.Getenv("EXCLUSIVE_CPUS")
 	exclCPUList := cpuListStrToIntSlice(exclCPUs)
 	fmt.Printf("Exclusive cpu list %v\n", exclCPUList)
 
-	poolConf, err := types.ReadPoolConfig()
+	poolConf, err := types.ReadPoolConfigFile(poolConfigFileName)
 	if err != nil {
 		panic("Configuration error")
 	}
 
 	if myContainerName == "" {
-		fmt.Printf("CONTAINER_NAME envrionment variable not found")
-		os.Exit(1)
+		panic("CONTAINER_NAME envrionment variable not found")
 	}
 	for _, container := range containers {
 		if container.Name != myContainerName {
@@ -114,8 +116,7 @@ func main() {
 			fmt.Printf("    Args: %v ", process.Args)
 			fmt.Printf("\n")
 			cmd := exec.Command(process.ProcName, process.Args...)
-
-			if poolConf.Pools[process.PoolName].PoolType == "exclusive" {
+			if strings.HasPrefix(process.PoolName, "exclusive") {
 				exclCPUList = setAffinity(process.CPUs, exclCPUList)
 			} else {
 				/* It is shared pool */

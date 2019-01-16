@@ -125,7 +125,7 @@
                 "namespace": "default",
                 "name": "cpupod",
                 "annotations": {
-                    "nokia.k8s.io/cpus": "[{\n\"container\": \"cputestcontainer\",\n\"processes\":\n  [{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"1\"],\n     \"cpus\": 1,\n     \"pool\": \"cpupool1\"\n   }\n]\n}]\n"
+                    "nokia.k8s.io/cpus": "[{\n\"container\": \"cputestcontainer\",\n\"processes\":\n  [{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"1\"],\n     \"cpus\": 1,\n     \"pool\": \"exclusive-cpupool1\"\n   }\n]\n}]\n"
                 }
             }
         },

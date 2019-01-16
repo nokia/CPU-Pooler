@@ -20,19 +20,12 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
-var poolConf types.PoolConfig
+var poolerConf *types.PoolerConfig
 
 type patch struct {
 	Op    string          `json:"op"`
 	Path  string          `json:"path"`
 	Value json.RawMessage `json:"value"`
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
@@ -53,27 +46,30 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 }
 
 func annotationNameFromConfig() string {
-	return poolConf.ResourceBaseName + "/cpus"
+	return poolerConf.ResourceBaseName + "/cpus"
 
 }
-
-func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, cName string) (patchItem patch) {
-	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, cName)
+func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, c *corev1.Container) (patchItem patch) {
+	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, c.Name)
 	cpuVal := `"` + strconv.Itoa(cpuReq) + `"`
 	patchItem.Op = "add"
-	patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolConf.ResourceBaseName + "~1" + pool
-	patchItem.Value =
-		json.RawMessage(cpuVal)
+	if len(c.Resources.Limits) > 0 {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolerConf.ResourceBaseName + "~1" + pool
+		patchItem.Value = json.RawMessage(cpuVal)
+	} else {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources"
+		patchItem.Value = json.RawMessage(`{ "limits": { "` + poolerConf.ResourceBaseName + "/" + pool + `":` + cpuVal + ` } }`)
+	}
 
 	return patchItem
-
 }
 
 func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
-	sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name, poolConf)
 
 	glog.V(2).Infof("Adding patches")
+
+	sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name)
 
 	// podinfo volumeMount
 	patchItem.Op = "add"
@@ -91,7 +87,7 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	//  device plugin config volumeMount.
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
 	patchItem.Value =
-		json.RawMessage(`{"name":"cpu-dp-config","mountPath":"/etc/cpu-dp","readOnly":true}`)
+		json.RawMessage(`{"name":"cpu-pooler-config","mountPath":"/etc/cpu-pooler","readOnly":true}`)
 	patchList = append(patchList, patchItem)
 
 	// Container name to env variable
@@ -112,49 +108,51 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 
 	// Add cpu limit if container requested shared pool cpus
 	if sharedCPUTime > 0 {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
 		cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
-		patchItem.Value =
-			json.RawMessage(cpuVal)
+		if len(c.Resources.Limits) > 0 {
+			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
+			patchItem.Value =
+				json.RawMessage(cpuVal)
+		} else {
+			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources"
+			patchItem.Value = json.RawMessage(`{ "limits": { "cpu":` + cpuVal + ` } }`)
+		}
 		patchList = append(patchList, patchItem)
 	}
 	// CPU pool recource request/limit from all pools of container
 	for _, pool := range cpuAnnotation.ContainerPools(c.Name) {
-		patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c.Name)
+		patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c)
 		patchList = append(patchList, patchItem)
 	}
 
 	return patchList, nil
 }
 
-func validateResource(resList corev1.ResourceList) error {
-	resourceBaseNameLen := len(poolConf.ResourceBaseName)
-	for key := range resList {
-		compLen := min(len(key), resourceBaseNameLen)
-		if string(key)[:compLen] == poolConf.ResourceBaseName {
-			poolName := string(key)[resourceBaseNameLen+1:]
-			if _, found := poolConf.Pools[poolName]; !found {
-				return errors.New(poolName + " not found from pool config")
-			}
-		}
-	}
-	return nil
-}
+func patchVolumes(patchList []patch) []patch {
+	var patchItem patch
+	patchItem.Op = "add"
 
-func validateContainerResourceSpec(c *corev1.Container) error {
-	if err := validateResource(c.Resources.Limits); err != nil {
-		return err
-	}
-	if err := validateResource(c.Resources.Requests); err != nil {
-		return err
-	}
-	return nil
+	// podinfo volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
+	patchList = append(patchList, patchItem)
+	// hostbin volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
+	patchList = append(patchList, patchItem)
+
+	// cpu dp configmap volume
+	patchItem.Path = "/spec/volumes/-"
+	patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
+	patchList = append(patchList, patchItem)
+	return patchList
+
 }
 
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(2).Info("mutating pods")
-	var err error
 	var patchList []patch
+	var err error
 
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 	if ar.Request.Resource != podResource {
@@ -179,18 +177,19 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Mutate containers if cpu annotation exists.
 	if podAnnotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
 		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
+
 		cpuAnnotation := types.CPUAnnotation{}
 
-		err = cpuAnnotation.Decode([]byte(podAnnotation), poolConf)
+		err = cpuAnnotation.Decode([]byte(podAnnotation))
 		if err != nil {
 			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
 		}
 		containersToPatch := cpuAnnotation.Containers()
+
 		glog.V(2).Infof("Patch containers %v", containersToPatch)
 
-		// Patch container if needed. If no annotation for container, validate
-		// possible CPU-Pooler resource requests/limits
+		// Patch container if needed.
 		for i, c := range pod.Spec.Containers {
 			if isContainerPatchNeeded(c.Name, containersToPatch) {
 				patchList, err = patchContainer(cpuAnnotation, patchList, i, &c)
@@ -199,34 +198,17 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 				}
 			}
 		}
-	}
-	// Validate CPU-Pooler resource requests/limits for containers
-	for _, c := range pod.Spec.Containers {
-		err = validateContainerResourceSpec(&c)
-		if err != nil {
-			return toAdmissionResponse(err)
+		// Add volumes if any container was patched
+		if len(patchList) > 0 {
+			patchList = patchVolumes(patchList)
+		} else {
+			glog.Errorf("CPU annotation exists but no container was patched %v:%v",
+				cpuAnnotation, pod.Spec.Containers)
+			return toAdmissionResponse(errors.New("CPU Annotation error"))
 		}
+
 	}
-
-	// Add volumes if any container was patched
 	if len(patchList) > 0 {
-		var patchItem patch
-		patchItem.Op = "add"
-
-		// podinfo volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)
-		patchList = append(patchList, patchItem)
-		// hostbin volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
-		patchList = append(patchList, patchItem)
-
-		// cpu dp configmap volume
-		patchItem.Path = "/spec/volumes/-"
-		patchItem.Value = json.RawMessage(`{"name":"cpu-dp-config","configMap":{ "name":"cpu-dp-configmap"} }`)
-		patchList = append(patchList, patchItem)
-
 		patch, err := json.Marshal(patchList)
 		if err != nil {
 			glog.Errorf("Patch marshall error %v:%v", patchList, err)
@@ -237,6 +219,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		pt := v1beta1.PatchTypeJSONPatch
 		reviewResponse.PatchType = &pt
 	}
+
 	return &reviewResponse
 }
 
@@ -296,15 +279,12 @@ func main() {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		glog.Fatal(err)
-		panic(1)
 	}
 
-	poolConf, err = types.ReadPoolConfig()
+	poolerConf, err = types.ReadPoolerConfig()
 	if err != nil {
-		glog.Errorf("Could not read poolconfig %v", err)
-		panic(1)
+		glog.Fatal(err)
 	}
-
 	http.HandleFunc("/mutating-pods", serveMutatePod)
 	server := &http.Server{
 		Addr:         ":443",

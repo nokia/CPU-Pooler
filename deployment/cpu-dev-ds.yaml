@@ -18,16 +18,21 @@ spec:
         imagePullPolicy: IfNotPresent
         command: [ "/cpu-device-plugin", "-logtostderr" ]
         volumeMounts:
-         - mountPath: /etc/cpu-dp
-           name: cpu-dp-config
+         - mountPath: /etc/cpu-pooler
+           name: cpu-pooler-config
          - mountPath: /var/lib/kubelet/device-plugins/ 
            name: devicesock 
            readOnly: false
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
       volumes:
       - name: devicesock 
         hostPath:
          # directory location on host
          path: /var/lib/kubelet/device-plugins/
-      - name: cpu-dp-config
+      - name: cpu-pooler-config
         configMap:
-          name: cpu-dp-configmap
+          name: cpu-pooler-configmap

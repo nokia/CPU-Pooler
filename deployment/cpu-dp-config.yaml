@@ -1,17 +1,25 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cpu-dp-configmap
+  name: cpu-pooler-configmap
 data:
-  poolconfig.yaml: |
+  cpu-pooler.yaml: |
     resourceBaseName: "nokia.k8s.io"
+  poolconfig-controller.yaml: |
     pools: 
-      cpupool1:
+      exclusive-pool:
         cpus : "4,5"
-        pooltype: "exclusive"
-      cpupool2:
+      exclusive-pool-2:
         cpus : "2,3"
-        pooltype: "exclusive"
-      sharedpool:
+      shared-pool:
         cpus : "1"
-        pooltype: "shared"
+    nodeSelector:
+      nodeType: controller
+  poolconfig-dpdk.yaml: |
+    pools: 
+      exclusive-pool:
+        cpus : "2,3,4,5,6,7"
+      shared-pool:
+        cpus : "1"
+    nodeSelector:
+      nodeType: dpdk

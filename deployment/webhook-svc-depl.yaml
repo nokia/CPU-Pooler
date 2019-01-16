@@ -41,14 +41,14 @@ spec:
             - name: webhook-certs
               mountPath: /etc/webhook/certs
               readOnly: true
-            - name: cpu-dp-config
-              mountPath: /etc/cpu-dp
+            - name: cpu-pooler-config
+              mountPath: /etc/cpu-pooler
       nodeSelector:
          node-role.kubernetes.io/master: ""
       volumes:
         - name: webhook-certs
           secret:
             secretName: cpu-dev-webhook-secret
-        - name: cpu-dp-config
+        - name: cpu-pooler-config
           configMap:
-            name: cpu-dp-configmap
+            name: cpu-pooler-configmap
