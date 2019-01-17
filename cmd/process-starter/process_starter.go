@@ -118,10 +118,18 @@ func main() {
 			cmd := exec.Command(process.ProcName, process.Args...)
 			if strings.HasPrefix(process.PoolName, "exclusive") {
 				exclCPUList = setAffinity(process.CPUs, exclCPUList)
+				if nil == exclCPUList {
+					fmt.Printf("Failed to set affinity")
+					os.Exit(1)
+				}
 			} else {
 				/* It is shared pool */
 				sharedCPUList := cpuListStrToIntSlice(poolConf.Pools[process.PoolName].CPUs)
 				setAffinity(len(sharedCPUList), sharedCPUList)
+				if nil == sharedCPUList {
+					fmt.Printf("Failed to set affinity")
+					os.Exit(1)
+				}
 
 			}
 			cmd.Stdout = os.Stdout

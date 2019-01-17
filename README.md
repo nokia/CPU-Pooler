@@ -103,6 +103,13 @@ Annotation schema is following and the name for the annotation is `<resourceBase
 ```
 An example is provided in cpu-test.yaml pod manifest in the deployment folder.
 
+### Restrictions
+
+Following restrictions apply when allocating cpu from pools and configuring pools:
+
+* There can be only one shared pool in the node
+* Containter can ask cpus from one type of pool only (shared or exclusive)
+
 ## Build
 
 Mutating webhook

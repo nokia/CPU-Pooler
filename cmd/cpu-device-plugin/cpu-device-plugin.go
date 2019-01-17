@@ -218,6 +218,11 @@ func createPluginsForPools() error {
 	glog.Infof("Pool configuration %v", poolConf)
 	for poolName, pool := range poolConf.Pools {
 		if strings.HasPrefix(poolName, "shared") {
+			if sharedCPUs != "" {
+				err = fmt.Errorf("Only one shared pool allowed")
+				glog.Errorf("Pool config : %v", poolConf)
+				break
+			}
 			sharedCPUs = pool.CPUs
 		}
 		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)
@@ -258,7 +263,7 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 	if err := createPluginsForPools(); err != nil {
-		panic("Failed to start device plugin")
+		glog.Fatalf("Failed to start device plugin: %v", err)
 	}
 
 	/* Monitor file changes for kubelet socket file and termination signals */

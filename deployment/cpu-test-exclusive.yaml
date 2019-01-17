@@ -22,3 +22,10 @@ spec:
     imagePullPolicy: IfNotPresent
     ports:
     - containerPort: 80
+    resources:
+      requests:
+        memory: 2000Mi
+        nokia.k8s.io/exclusive-pool: "3"
+      limits:
+        memory: 2000Mi
+        nokia.k8s.io/exclusive-pool: "3"
