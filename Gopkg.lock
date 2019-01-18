@@ -171,15 +171,12 @@
   version = "1.0.1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:8585b4b0f82f22efd5aa68fa95c937bb84edea96600b3039a95e71766ddd41d0"
+  digest = "1:f405b1fd5728f730889f67246312619d778e532516d6cdb7458fab98dd0df537"
   name = "github.com/nokia/CPU-Pooler"
-  packages = [
-    "internal/types",
-    "pkg/k8sclient",
-  ]
+  packages = ["internal/types"]
   pruneopts = "UT"
-  revision = "c812f351bb010eb208db9a0f7190630e00b74612"
+  revision = "eb1efb28a3a9634b1d8906403492259a6a036227"
+  version = "v0.1.0"
 
 [[projects]]
   branch = "master"
@@ -223,7 +220,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:8ecb828bb550a8c6b7d75b8261a42c369461311616ebe5451966d067f5f993bf"
+  digest = "1:470efb06ada11351d90ee09868d84c622cc949a59c165b99d33d555dacbde74b"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -236,29 +233,29 @@
     "trace",
   ]
   pruneopts = "UT"
-  revision = "891ebc4b82d6e74f468c533b06f983c7be918a96"
+  revision = "915654e7eabcea33ae277abbecf52f0d8b7a9fdc"
 
 [[projects]]
   branch = "master"
-  digest = "1:5276e08fe6a1dfdb65b4f46a2e5d5c9e00be6e499105e441049c3c04a0c83b36"
+  digest = "1:e007b54f54cbd4214aa6d97a67d57bc2539991adb4e22ea92c482bbece8de469"
   name = "golang.org/x/oauth2"
   packages = [
     ".",
     "internal",
   ]
   pruneopts = "UT"
-  revision = "d668ce993890a79bda886613ee587a69dd5da7a6"
+  revision = "5dab4167f31cbd76b407f1486c86b40748bc5073"
 
 [[projects]]
   branch = "master"
-  digest = "1:ba8cbf57cfd92d5f8592b4aca1a35d92c162363d32aeabd5b12555f8896635e7"
+  digest = "1:43cde116ff48f299eddb7e6515677e6d0a2c915854bb05a333877f07c3bb3033"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "UT"
-  revision = "4d1cda033e0619309c606fc686de3adcf599539e"
+  revision = "11f53e03133963fb11ae0588e08b5e0b85be8be5"
 
 [[projects]]
   digest = "1:a2ab62866c75542dd18d2b069fec854577a20211d7c0ea6ae746072a1dccdd18"
@@ -292,7 +289,7 @@
   revision = "85acf8d2951cb2a3bde7632f9ff273ef0379bcbd"
 
 [[projects]]
-  digest = "1:08206298775e5b462e6c0333f4471b44e63f1a70e42952b6ede4ecc9572281eb"
+  digest = "1:6f3bd49ddf2e104e52062774d797714371fac1b8bddfd8e124ce78e6b2264a10"
   name = "google.golang.org/appengine"
   packages = [
     "internal",
@@ -304,8 +301,8 @@
     "urlfetch",
   ]
   pruneopts = "UT"
-  revision = "4a4468ece617fc8205e99368fa2200e9d1fad421"
-  version = "v1.3.0"
+  revision = "e9657d882bb81064595ca3b56cbe2546bbabf7b1"
+  version = "v1.4.0"
 
 [[projects]]
   branch = "master"
@@ -313,11 +310,11 @@
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "UT"
-  revision = "bd91e49a0898e27abb88c339b432fa53d7497ac0"
+  revision = "db91494dd46c1fdcbbde05e5ff5eb56df8f7d79a"
 
 [[projects]]
   branch = "master"
-  digest = "1:7ec2e81988f0facd79ac23eea82105bd3ef1bda8a9a21ed6351cda4a8c3d9ee9"
+  digest = "1:1e368b42a94a729041d73c5127a80b1e0b1bcdc30e9e74c43ff8e2cd5584efd3"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -353,7 +350,7 @@
     "tap",
   ]
   pruneopts = "UT"
-  revision = "5da252b6a6c870fee942a3b18a1bc46c684f9adc"
+  revision = "9f93218b136d2bb2d8e5f6937613e46ad569279e"
 
 [[projects]]
   digest = "1:2d1fbdc6777e5408cabeb02bf336305e724b925ff4546ded0fa8715a7267922a"
@@ -411,11 +408,11 @@
     "storage/v1beta1",
   ]
   pruneopts = "UT"
-  revision = "d04500c8c3dda9c980b668c57abc2ca61efcf5c4"
+  revision = "173ce66c1e39d1d0f56e0b3347ff2988068aecd0"
 
 [[projects]]
   branch = "master"
-  digest = "1:94c0b6bfc23504363cc9ac201ee2569b8812c9c57a0491f19888517de37b59ae"
+  digest = "1:94307202843115686e257ef9fb968c13fe54b53bb63dcdfaaa82cb62bc333dfb"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -459,7 +456,7 @@
     "third_party/forked/golang/reflect",
   ]
   pruneopts = "UT"
-  revision = "57dc7e687b5426ecb5df4cabdcdce30fddb74f22"
+  revision = "001e837a013905514689c0e17c7065db5638974e"
 
 [[projects]]
   digest = "1:f4b9cdff17a20e1973a49f34b7ee7def7dabf05daf062d8bc0727db740c5aed4"
@@ -612,12 +609,12 @@
   version = "v0.1.0"
 
 [[projects]]
-  digest = "1:f1f16530c42db18b3cccec45a08891d3cc5e18da795568577bd0d367328baa49"
+  digest = "1:7b3450adffaf8a42ec8f66d95bba2ee66f60c53ad7ae0ae767825864d6f52d0e"
   name = "k8s.io/kubernetes"
   packages = ["pkg/kubelet/apis/deviceplugin/v1beta1"]
   pruneopts = "UT"
-  revision = "eec55b9ba98609a46fee712359c7b5b365bdd920"
-  version = "v1.13.1"
+  revision = "cff46ab41ff0bb44d8584413b598ad8360ec1def"
+  version = "v1.13.2"
 
 [[projects]]
   digest = "1:7719608fe0b52a4ece56c2dde37bedd95b938677d1ab0f84b8a7852e4c59f849"
@@ -637,7 +634,6 @@
     "github.com/intel/multus-cni/checkpoint",
     "github.com/intel/multus-cni/types",
     "github.com/nokia/CPU-Pooler/internal/types",
-    "github.com/nokia/CPU-Pooler/pkg/k8sclient",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
     "google.golang.org/grpc",

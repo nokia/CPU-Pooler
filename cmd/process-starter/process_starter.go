@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/Levovar/CPU-Pooler/internal/types"
+	"github.com/Levovar/CPU-Pooler/pkg/types"
 	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"

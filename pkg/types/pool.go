@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"strings"
 	"github.com/go-yaml/yaml"
 	"github.com/golang/glog"
 	"github.com/Levovar/CPU-Pooler/pkg/k8sclient"
@@ -14,11 +15,10 @@ type Pool struct {
 	CPUs string `yaml:"cpus"`
 }
 
-// PoolConfig defines pool configurtion for a node
+// PoolConfig defines pool configuration for a node
 type PoolConfig struct {
 	Pools        map[string]Pool   `yaml:"pools"`
 	NodeSelector map[string]string `yaml:"nodeSelector"`
-	ResourceBaseName string `yaml:"resourceBaseName"`
 }
 
 // PoolConfigDir defines the pool configuration file location
@@ -72,4 +72,13 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 		}
 	}
 	return pools, err
+}
+
+func (poolConf PoolConfig) SelectPool(prefix string) Pool {
+	for poolName, pool := range poolConf.Pools {
+		if strings.HasPrefix(poolName, prefix) {
+			return pool
+		}
+	}
+	return Pool{}
 }

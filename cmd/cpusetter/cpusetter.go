@@ -5,11 +5,9 @@ import (
   "log"
   "os"
   "syscall"
-  "github.com/Levovar/CPU-Pooler/pkg/sethandler"
   "github.com/Levovar/CPU-Pooler/pkg/types"
+  "github.com/Levovar/CPU-Pooler/pkg/sethandler"
   "os/signal"
-  "k8s.io/client-go/tools/clientcmd"
-  "k8s.io/client-go/kubernetes"
 )
 
 var (
@@ -23,19 +21,14 @@ func main() {
   if poolConfigPath == "" || cpusetRoot == "" {
     log.Fatal("ERROR: Mandatory command-line arguments poolconfigs and cpusetroot were not provided!")    
   }
-  poolConfigs, err := parsePoolConfigFiles()
+  poolConf,_,err := types.DeterminePoolConfig()
   if err != nil {
-    log.Fatal("ERROR: Could not read CPU pool configuration files, exiting!")
+    log.Fatal("ERROR: Could not read CPU pool configuration files because: " + err.Error() + ", exiting!")
   }
-  cfg, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
-  if err != nil {
-    log.Fatal("ERROR: Could not read cluster kubeconfig, exiting!")
-  }
-  kubeClient, err := kubernetes.NewForConfig(cfg)
+  setHandler,err := sethandler.New(kubeConfig,poolConf,cpusetRoot)
   if err != nil {
     log.Fatal("ERROR: Could not initalize K8s client because of error: "+ err.Error() +", exiting!")
   }
-  setHandler := sethandler.New(kubeClient,poolConfigs,cpusetRoot)
   controller := setHandler.CreateController()
   stopChannel := make(chan struct{})
   signalChannel := make(chan os.Signal, 1)
@@ -54,10 +47,4 @@ func init() {
   flag.StringVar(&poolConfigPath, "poolconfigs", "", "Path to the pool configuration files. Mandatory parameter.")
   flag.StringVar(&cpusetRoot, "cpusetroot", "", "The root of the cgroupfs where Kubernetes creates the cpusets for the Pods . Mandatory parameter.")
   flag.StringVar(&kubeConfig, "kubeconfig", "", "Path to a kubeconfig. Optional parameter, only required if out-of-cluster.")
-}
-
-//TODO
-func parsePoolConfigFiles() (types.PoolConfig,error) {
-  poolConfig := types.PoolConfig{}
-  return poolConfig,nil
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
-	"github.com/Levovar/CPU-Pooler/internal/types"
+	"github.com/Levovar/CPU-Pooler/pkg/types"
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
@@ -21,6 +21,7 @@ import (
 )
 
 var poolConfFileName string
+var resourceBaseName = "nokia.k8s.io"
 
 type cpuDeviceManager struct {
 	pool           types.Pool
@@ -202,6 +203,9 @@ func createPluginsForPools() error {
 	}
 	var sharedCPUs string
 	poolConf,_,err := types.DeterminePoolConfig()
+	if err != nil {
+		glog.Fatal(err)
+	}
 	glog.Infof("Pool configuration %v", poolConf)
 	for poolName, pool := range poolConf.Pools {
 		if strings.HasPrefix(poolName, "shared") {
@@ -217,7 +221,7 @@ func createPluginsForPools() error {
 			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
 			break
 		}
-		resourceName := poolConf.ResourceBaseName + "/" + poolName
+		resourceName := resourceBaseName + "/" + poolName
 		err := cdm.Register(path.Join(pluginapi.DevicePluginPath, "kubelet.sock"), resourceName)
 		if err != nil {
 			// Stop server

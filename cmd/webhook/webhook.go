@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
-	"github.com/Levovar/CPU-Pooler/internal/types"
+	"github.com/Levovar/CPU-Pooler/pkg/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,7 +22,7 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
-var poolConf *types.PoolConfig
+var resourceBaseName = "nokia.k8s.io"
 
 type containerPoolRequests struct {
 	sharedCPURequests int
@@ -89,7 +89,7 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 }
 
 func annotationNameFromConfig() string {
-	return poolConf.ResourceBaseName + "/cpus"
+	return resourceBaseName + "/cpus"
 
 }
 
