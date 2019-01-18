@@ -1,7 +1,6 @@
 package k8sclient
 
 import (
-	"errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -23,7 +22,7 @@ func GetNodeLabels() (map[string]string,error) {
 	}
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
-		return nil,errors.New("NODE_NAME environment variable missing")
+		return nil,nil
 	}
 	nodes, err := clientset.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if err != nil {
