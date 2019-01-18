@@ -2,6 +2,22 @@
 
 
 [[projects]]
+  digest = "1:d8d8684ac16873cbf87fc33e2e2d812a5abe9f37d87e9c7ddb318d975a9fefd6"
+  name = "github.com/containernetworking/cni"
+  packages = [
+    "libcni",
+    "pkg/invoke",
+    "pkg/skel",
+    "pkg/types",
+    "pkg/types/020",
+    "pkg/types/current",
+    "pkg/version",
+  ]
+  pruneopts = "UT"
+  revision = "a7885cb6f8ab03fba07852ded351e4f5e7a112bf"
+  version = "v0.6.0"
+
+[[projects]]
   digest = "1:ffe9824d294da03b391f44e1ae8281281b4afc1bdaa9588c9097785e3af10cec"
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
@@ -70,14 +86,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0bfbe13936953a98ae3cfe8ed6670d396ad81edf069a806d2f6515d7bb6950df"
-  name = "github.com/google/btree"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "4030bb1f1f0c35b30ca7009e9ebd06849dd45306"
-
-[[projects]]
-  branch = "master"
   digest = "1:3ee90c0d94da31b442dde97c99635aaafec68d0b8a3c12ee2075c6bdabeec6bb"
   name = "github.com/google/gofuzz"
   packages = ["."]
@@ -108,6 +116,37 @@
   revision = "c63ab54fda8f77302f8d414e19933f2b6026a089"
 
 [[projects]]
+  digest = "1:8ec8d88c248041a6df5f6574b87bc00e7e0b493881dad2e7ef47b11dc69093b5"
+  name = "github.com/hashicorp/golang-lru"
+  packages = [
+    ".",
+    "simplelru",
+  ]
+  pruneopts = "UT"
+  revision = "20f1fb78b0740ba8c3cb143a61e86ba5c8669768"
+  version = "v0.5.0"
+
+[[projects]]
+  digest = "1:8eb1de8112c9924d59bf1d3e5c26f5eaa2bfc2a5fcbb92dc1c2e4546d695f277"
+  name = "github.com/imdario/mergo"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "9f23e2d6bd2a77f959b2bf6acdbefd708a83a4a4"
+  version = "v0.3.6"
+
+[[projects]]
+  branch = "master"
+  digest = "1:6ad681d9a64a76497da3082a15dc82ffac1ecb328f88780b6901ca018704ebfd"
+  name = "github.com/intel/multus-cni"
+  packages = [
+    "checkpoint",
+    "logging",
+    "types",
+  ]
+  pruneopts = "UT"
+  revision = "ac3f0d155ecc19afd52b0b212e5721e21c3eacf4"
+
+[[projects]]
   digest = "1:3e551bbb3a7c0ab2a2bf4660e7fcad16db089fdcfbb44b0199e62838038623ea"
   name = "github.com/json-iterator/go"
   packages = ["."]
@@ -133,35 +172,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:3bf17a6e6eaa6ad24152148a631d18662f7212e21637c2699bff3369b7f00fa2"
-  name = "github.com/petar/GoLLRB"
-  packages = ["llrb"]
-  pruneopts = "UT"
-  revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
-
-[[projects]]
-  digest = "1:0e7775ebbcf00d8dd28ac663614af924411c868dca3d5aa762af0fae3808d852"
-  name = "github.com/peterbourgon/diskv"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "5f041e8faa004a95c88a202771f4cc3e991971e6"
-  version = "v2.0.1"
-
-[[projects]]
-  branch = "master"
-  digest = "1:38f553aff0273ad6f367cb0a0f8b6eecbaef8dc6cb8b50e57b6a81c1d5b1e332"
-  name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
-  pruneopts = "UT"
-  revision = "505ab145d0a99da450461ae2c1a9f6cd10d1f447"
-
-[[projects]]
-  digest = "1:f405b1fd5728f730889f67246312619d778e532516d6cdb7458fab98dd0df537"
+  digest = "1:8585b4b0f82f22efd5aa68fa95c937bb84edea96600b3039a95e71766ddd41d0"
   name = "github.com/nokia/CPU-Pooler"
-  packages = ["internal/types"]
+  packages = [
+    "internal/types",
+    "pkg/k8sclient",
+  ]
   pruneopts = "UT"
-  revision = "eb1efb28a3a9634b1d8906403492259a6a036227"
-  version = "v0.1.0"
+  revision = "c812f351bb010eb208db9a0f7190630e00b74612"
 
 [[projects]]
   branch = "master"
@@ -178,6 +196,14 @@
   pruneopts = "UT"
   revision = "5f041e8faa004a95c88a202771f4cc3e991971e6"
   version = "v2.0.1"
+
+[[projects]]
+  digest = "1:cf31692c14422fa27c83a05292eb5cbe0fb2775972e8f1f8446a71549bd8980b"
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "ba968bfe8b2f7e042a574c888954fccecfa385b4"
+  version = "v0.8.1"
 
 [[projects]]
   digest = "1:c1b1102241e7f645bc8e0c22ae352e8f0dc6484b6cb4d132fa9f24174e0119e2"
@@ -389,7 +415,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:c0712ede9ad94365adec539630d3255eb1700988c47d7f413099102bb948cafd"
+  digest = "1:94c0b6bfc23504363cc9ac201ee2569b8812c9c57a0491f19888517de37b59ae"
   name = "k8s.io/apimachinery"
   packages = [
     "pkg/api/errors",
@@ -413,7 +439,9 @@
     "pkg/runtime/serializer/versioning",
     "pkg/selection",
     "pkg/types",
+    "pkg/util/cache",
     "pkg/util/clock",
+    "pkg/util/diff",
     "pkg/util/errors",
     "pkg/util/framer",
     "pkg/util/intstr",
@@ -434,10 +462,56 @@
   revision = "57dc7e687b5426ecb5df4cabdcdce30fddb74f22"
 
 [[projects]]
-  digest = "1:67a85fd36cd1803b7421e6179e55e0b6668417ab338e20451cec0988f0762c63"
+  digest = "1:f4b9cdff17a20e1973a49f34b7ee7def7dabf05daf062d8bc0727db740c5aed4"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
+    "informers",
+    "informers/admissionregistration",
+    "informers/admissionregistration/v1alpha1",
+    "informers/admissionregistration/v1beta1",
+    "informers/apps",
+    "informers/apps/v1",
+    "informers/apps/v1beta1",
+    "informers/apps/v1beta2",
+    "informers/auditregistration",
+    "informers/auditregistration/v1alpha1",
+    "informers/autoscaling",
+    "informers/autoscaling/v1",
+    "informers/autoscaling/v2beta1",
+    "informers/autoscaling/v2beta2",
+    "informers/batch",
+    "informers/batch/v1",
+    "informers/batch/v1beta1",
+    "informers/batch/v2alpha1",
+    "informers/certificates",
+    "informers/certificates/v1beta1",
+    "informers/coordination",
+    "informers/coordination/v1beta1",
+    "informers/core",
+    "informers/core/v1",
+    "informers/events",
+    "informers/events/v1beta1",
+    "informers/extensions",
+    "informers/extensions/v1beta1",
+    "informers/internalinterfaces",
+    "informers/networking",
+    "informers/networking/v1",
+    "informers/policy",
+    "informers/policy/v1beta1",
+    "informers/rbac",
+    "informers/rbac/v1",
+    "informers/rbac/v1alpha1",
+    "informers/rbac/v1beta1",
+    "informers/scheduling",
+    "informers/scheduling/v1alpha1",
+    "informers/scheduling/v1beta1",
+    "informers/settings",
+    "informers/settings/v1alpha1",
+    "informers/storage",
+    "informers/storage/v1",
+    "informers/storage/v1alpha1",
+    "informers/storage/v1beta1",
     "kubernetes",
     "kubernetes/scheme",
     "kubernetes/typed/admissionregistration/v1alpha1",
@@ -472,6 +546,34 @@
     "kubernetes/typed/storage/v1",
     "kubernetes/typed/storage/v1alpha1",
     "kubernetes/typed/storage/v1beta1",
+    "listers/admissionregistration/v1alpha1",
+    "listers/admissionregistration/v1beta1",
+    "listers/apps/v1",
+    "listers/apps/v1beta1",
+    "listers/apps/v1beta2",
+    "listers/auditregistration/v1alpha1",
+    "listers/autoscaling/v1",
+    "listers/autoscaling/v2beta1",
+    "listers/autoscaling/v2beta2",
+    "listers/batch/v1",
+    "listers/batch/v1beta1",
+    "listers/batch/v2alpha1",
+    "listers/certificates/v1beta1",
+    "listers/coordination/v1beta1",
+    "listers/core/v1",
+    "listers/events/v1beta1",
+    "listers/extensions/v1beta1",
+    "listers/networking/v1",
+    "listers/policy/v1beta1",
+    "listers/rbac/v1",
+    "listers/rbac/v1alpha1",
+    "listers/rbac/v1beta1",
+    "listers/scheduling/v1alpha1",
+    "listers/scheduling/v1beta1",
+    "listers/settings/v1alpha1",
+    "listers/storage/v1",
+    "listers/storage/v1alpha1",
+    "listers/storage/v1beta1",
     "pkg/apis/clientauthentication",
     "pkg/apis/clientauthentication/v1alpha1",
     "pkg/apis/clientauthentication/v1beta1",
@@ -479,14 +581,23 @@
     "plugin/pkg/client/auth/exec",
     "rest",
     "rest/watch",
+    "tools/auth",
+    "tools/cache",
+    "tools/clientcmd",
     "tools/clientcmd/api",
+    "tools/clientcmd/api/latest",
+    "tools/clientcmd/api/v1",
     "tools/metrics",
+    "tools/pager",
     "tools/reference",
     "transport",
+    "util/buffer",
     "util/cert",
     "util/connrotation",
     "util/flowcontrol",
+    "util/homedir",
     "util/integer",
+    "util/retry",
   ]
   pruneopts = "UT"
   revision = "e64494209f554a6723674bd494d69445fb76a1d4"
@@ -523,19 +634,23 @@
     "github.com/fsnotify/fsnotify",
     "github.com/go-yaml/yaml",
     "github.com/golang/glog",
+    "github.com/intel/multus-cni/checkpoint",
+    "github.com/intel/multus-cni/types",
     "github.com/nokia/CPU-Pooler/internal/types",
+    "github.com/nokia/CPU-Pooler/pkg/k8sclient",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
     "google.golang.org/grpc",
     "k8s.io/api/admission/v1beta1",
     "k8s.io/api/core/v1",
-    "k8s.io/apimachinery/pkg/api/errors",
-    "k8s.io/apimachinery/pkg/api/resource",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/runtime",
     "k8s.io/apimachinery/pkg/runtime/serializer",
+    "k8s.io/client-go/informers",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",
+    "k8s.io/client-go/tools/cache",
+    "k8s.io/client-go/tools/clientcmd",
     "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1",
   ]
   solver-name = "gps-cdcl"

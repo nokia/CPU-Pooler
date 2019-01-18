@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/internal/types"
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"github.com/Levovar/CPU-Pooler/internal/types"
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
@@ -189,32 +188,20 @@ func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *c
 		sharedPoolCPUs: sharedCPUs,
 		poolType:       poolType,
 	}
-
 }
 
 func createPluginsForPools() error {
-	var sharedCPUs string
-	var poolConf types.PoolConfig
-
 	files, err := filepath.Glob(filepath.Join(pluginapi.DevicePluginPath, "cpudp*"))
-	if err != nil {
-		panic(err)
-	}
-	for _, f := range files {
-		if err := os.Remove(f); err != nil {
-			panic(err)
-		}
-	}
-	nodeLabels := k8sclient.GetNodeLabels()
-	poolConf, poolConfFileName, err = types.ReadPoolConfig(nodeLabels)
-	if err != nil {
-		glog.Fatal("Pool configuration error")
-	}
-	poolerConf, err := types.ReadPoolerConfig()
 	if err != nil {
 		glog.Fatal(err)
 	}
-
+	for _, f := range files {
+		if err := os.Remove(f); err != nil {
+			glog.Fatal(err)
+		}
+	}
+	var sharedCPUs string
+	poolConf,_,err := types.DeterminePoolConfig()
 	glog.Infof("Pool configuration %v", poolConf)
 	for poolName, pool := range poolConf.Pools {
 		if strings.HasPrefix(poolName, "shared") {
@@ -230,7 +217,7 @@ func createPluginsForPools() error {
 			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
 			break
 		}
-		resourceName := poolerConf.ResourceBaseName + "/" + poolName
+		resourceName := poolConf.ResourceBaseName + "/" + poolName
 		err := cdm.Register(path.Join(pluginapi.DevicePluginPath, "kubelet.sock"), resourceName)
 		if err != nil {
 			// Stop server
@@ -240,7 +227,6 @@ func createPluginsForPools() error {
 		}
 		cdms = append(cdms, cdm)
 		glog.Infof("CPU device plugin registered with the Kubelet")
-
 	}
 	if err != nil {
 		for _, cdm := range cdms {

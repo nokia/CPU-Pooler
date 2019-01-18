@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:f405b1fd5728f730889f67246312619d778e532516d6cdb7458fab98dd0df537"
+  name = "github.com/Levovar/CPU-Pooler"
+  packages = ["internal/types"]
+  pruneopts = "UT"
+  revision = "eb1efb28a3a9634b1d8906403492259a6a036227"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:d8d8684ac16873cbf87fc33e2e2d812a5abe9f37d87e9c7ddb318d975a9fefd6"
   name = "github.com/containernetworking/cni"
   packages = [
@@ -154,14 +162,6 @@
   pruneopts = "UT"
   revision = "94122c33edd36123c84d5368cfb2b69df93a0ec8"
   version = "v1.0.1"
-
-[[projects]]
-  digest = "1:f405b1fd5728f730889f67246312619d778e532516d6cdb7458fab98dd0df537"
-  name = "github.com/nokia/CPU-Pooler"
-  packages = ["internal/types"]
-  pruneopts = "UT"
-  revision = "eb1efb28a3a9634b1d8906403492259a6a036227"
-  version = "v0.1.0"
 
 [[projects]]
   branch = "master"
@@ -548,12 +548,14 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/Levovar/CPU-Pooler/internal/types",
     "github.com/intel/multus-cni/checkpoint",
-    "github.com/nokia/CPU-Pooler/internal/types",
+    "github.com/intel/multus-cni/types",
     "k8s.io/api/core/v1",
-    "k8s.io/apimachinery/pkg/types",
+    "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/client-go/informers",
     "k8s.io/client-go/kubernetes",
+    "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
   ]

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/go-yaml/yaml"
 	"github.com/golang/glog"
+	"github.com/Levovar/CPU-Pooler/pkg/k8sclient"
 	"io/ioutil"
 	"path/filepath"
 )
@@ -17,27 +18,34 @@ type Pool struct {
 type PoolConfig struct {
 	Pools        map[string]Pool   `yaml:"pools"`
 	NodeSelector map[string]string `yaml:"nodeSelector"`
+	ResourceBaseName string `yaml:"resourceBaseName"`
 }
 
 // PoolConfigDir defines the pool configuration file location
 var PoolConfigDir = "/etc/cpu-pooler"
 
+func DeterminePoolConfig() (PoolConfig,string,error) {
+	nodeLabels,err := k8sclient.GetNodeLabels()
+	if err != nil {
+		return PoolConfig{}, "", errors.New("Following error happend when trying to read K8s API server Node object:" + err.Error())
+	}
+	return readPoolConfig(nodeLabels)
+}
+
 // ReadPoolConfig implements pool configuration file reading
-func ReadPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
+func readPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
 	files, err := filepath.Glob(filepath.Join(PoolConfigDir, "poolconfig-*"))
 	if err != nil {
-		glog.Fatal(err)
+		return PoolConfig{}, "", err
 	}
 	for _, f := range files {
-		var pools PoolConfig
-		file, err := ioutil.ReadFile(f)
+		pools, err := ReadPoolConfigFile(f)
 		if err != nil {
-			glog.Errorf("Could not read poolconfig: %s:%v", f, err)
-		} else {
-			err = yaml.Unmarshal([]byte(file), &pools)
-			if err != nil {
-				glog.Errorf("Error in poolconfig file %v", err)
-			}
+			return PoolConfig{}, "", err
+		}
+		if labelMap == nil {
+			glog.Infof("Using first configuration file %s as pool config in lieu of missing Node information", f)
+			return pools, f, nil
 		}
 		for label, labelValue := range labelMap {
 			if value, ok := pools.NodeSelector[label]; ok {
@@ -48,8 +56,7 @@ func ReadPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
 			}
 		}
 	}
-	glog.Fatalf("No labels matching pool configuration files, labels: %v", labelMap)
-	return PoolConfig{}, "", errors.New("Poolconfiguration not found for node")
+	return PoolConfig{}, "", errors.New("No matching pool configuration file found for provided nodeSelector labels")
 }
 
 // ReadPoolConfigFile reads a pool configuration file
@@ -57,11 +64,11 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	var pools PoolConfig
 	file, err := ioutil.ReadFile(name)
 	if err != nil {
-		glog.Errorf("Could not read poolconfig: %s:%v", name, err)
+		return PoolConfig{}, errors.New("Could not read poolconfig file named: " + name + " because:" + err.Error())
 	} else {
 		err = yaml.Unmarshal([]byte(file), &pools)
 		if err != nil {
-			glog.Errorf("Error in poolconfig file %v", err)
+			return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
 		}
 	}
 	return pools, err

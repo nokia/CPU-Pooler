@@ -1,6 +1,7 @@
 package k8sclient
 
 import (
+	"errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -9,24 +10,24 @@ import (
 
 // GetNodeLabels returns node labels.
 // NODE_NAME environment variable is used to determine the node
-func GetNodeLabels() map[string]string {
+func GetNodeLabels() (map[string]string,error) {
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		return nil,err
 	}
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		return nil,err
 	}
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
-		panic("NODE_NAME environment variable missing")
+		return nil,errors.New("NODE_NAME environment variable missing")
 	}
 	nodes, err := clientset.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
 	if err != nil {
-		panic(err.Error())
+		return nil,err
 	}
-	return nodes.ObjectMeta.Labels
+	return nodes.ObjectMeta.Labels,nil
 }

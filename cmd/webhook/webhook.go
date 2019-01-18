@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/internal/types"
+	"github.com/Levovar/CPU-Pooler/internal/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,7 +22,7 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
-var poolerConf *types.PoolerConfig
+var poolConf *types.PoolConfig
 
 type containerPoolRequests struct {
 	sharedCPURequests int
@@ -89,7 +89,7 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 }
 
 func annotationNameFromConfig() string {
-	return poolerConf.ResourceBaseName + "/cpus"
+	return poolConf.ResourceBaseName + "/cpus"
 
 }
 
@@ -353,10 +353,6 @@ func main() {
 		glog.Fatal(err)
 	}
 
-	poolerConf, err = types.ReadPoolerConfig()
-	if err != nil {
-		glog.Fatal(err)
-	}
 	http.HandleFunc("/mutating-pods", serveMutatePod)
 	server := &http.Server{
 		Addr:         ":443",
