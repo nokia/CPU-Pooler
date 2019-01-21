@@ -14,7 +14,7 @@ install:
   - dep ensure
 
 script:
-  - golint -set_exit_status ./cmd/... ./internal/...
+  - golint -set_exit_status $(go list ./...)
   - go test -v ./...
   - docker build -t cpudp -f build/Dockerfile.cpudp .
   - docker build -t cpu-device-webhook -f build/Dockerfile.webhook .
