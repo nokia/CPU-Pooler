@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/pkg/types"
+	"github.com/Levovar/CPU-Pooler/pkg/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -62,21 +62,21 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 		}
 		var sharedFound, exclusiveFound bool
 		for key, value := range c.Resources.Limits {
-			if strings.HasPrefix(string(key), poolerConf.ResourceBaseName) {
+			if strings.HasPrefix(string(key), resourceBaseName) {
 
 				val, err := strconv.Atoi(value.String())
 				if err != nil {
 					glog.Errorf("Cannot convert cpu request to int %s:%s", key, value.String())
 					return poolRequestMap{}, err
 				}
-				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/shared") {
+				if strings.HasPrefix(string(key), resourceBaseName+"/shared") {
 					cPoolRequests.sharedCPURequests += val
 					sharedFound = true
 				}
-				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/exclusive") {
+				if strings.HasPrefix(string(key), resourceBaseName+"/exclusive") {
 					exclusiveFound = true
 				}
-				poolName := strings.TrimPrefix(string(key), poolerConf.ResourceBaseName+"/")
+				poolName := strings.TrimPrefix(string(key), resourceBaseName+"/")
 				cPoolRequests.pools[poolName] = val
 				poolRequests[c.Name] = cPoolRequests
 			}

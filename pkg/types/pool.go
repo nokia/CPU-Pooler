@@ -24,6 +24,9 @@ type PoolConfig struct {
 // PoolConfigDir defines the pool configuration file location
 var PoolConfigDir = "/etc/cpu-pooler"
 
+//DeterminePoolConfig first interrogates the label set of the Node this process runs on.
+//It uses this information to select the specific PoolConfig file corresponding to the Node.
+//Returns the selected PoolConfig file, the name of the file, or an error if it was impossible to determine which config file is applicable.
 func DeterminePoolConfig() (PoolConfig,string,error) {
 	nodeLabels,err := k8sclient.GetNodeLabels()
 	if err != nil {
@@ -65,15 +68,16 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	file, err := ioutil.ReadFile(name)
 	if err != nil {
 		return PoolConfig{}, errors.New("Could not read poolconfig file named: " + name + " because:" + err.Error())
-	} else {
-		err = yaml.Unmarshal([]byte(file), &pools)
-		if err != nil {
-			return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
-		}
+	}
+	err = yaml.Unmarshal([]byte(file), &pools)
+	if err != nil {
+		return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
 	}
 	return pools, err
 }
 
+//SelectPool returns the exact CPUSet belonging to either the exclusive, shared, or default pool of one PoolConfig object
+//An empty CPUSet is returned in case the configuration does not contain the requested type
 func (poolConf PoolConfig) SelectPool(prefix string) Pool {
 	for poolName, pool := range poolConf.Pools {
 		if strings.HasPrefix(poolName, prefix) {
