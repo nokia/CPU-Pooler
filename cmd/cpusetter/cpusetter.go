@@ -5,8 +5,8 @@ import (
   "log"
   "os"
   "syscall"
-  "github.com/Levovar/CPU-Pooler/pkg/types"
-  "github.com/Levovar/CPU-Pooler/pkg/sethandler"
+  "github.com/nokia/CPU-Pooler/pkg/types"
+  "github.com/nokia/CPU-Pooler/pkg/sethandler"
   "os/signal"
 )
 

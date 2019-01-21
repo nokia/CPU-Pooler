@@ -5,7 +5,7 @@ import (
 	"strings"
 	"github.com/go-yaml/yaml"
 	"github.com/golang/glog"
-	"github.com/Levovar/CPU-Pooler/pkg/k8sclient"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"io/ioutil"
 	"path/filepath"
 )

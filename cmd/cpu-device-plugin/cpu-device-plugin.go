@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
-	"github.com/Levovar/CPU-Pooler/pkg/types"
+	"github.com/nokia/CPU-Pooler/pkg/types"
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"

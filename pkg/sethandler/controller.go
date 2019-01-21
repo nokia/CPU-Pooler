@@ -8,7 +8,7 @@ import (
   "reflect"
   "strings"
   "time"
-  "github.com/Levovar/CPU-Pooler/pkg/types"
+  "github.com/nokia/CPU-Pooler/pkg/types"
   "github.com/intel/multus-cni/checkpoint"
   multusTypes "github.com/intel/multus-cni/types"
   "k8s.io/api/core/v1"
@@ -54,12 +54,16 @@ func (setHandler *SetHandler) CreateController() cache.Controller {
   controller.AddEventHandler(cache.ResourceEventHandlerFuncs{
     AddFunc:  func(obj interface{}) {setHandler.podAdded(*(reflect.ValueOf(obj).Interface().(*v1.Pod)))},
     DeleteFunc: func(obj interface{}) {},
-    UpdateFunc: func(oldObj, newObj interface{}) {},
+    UpdateFunc: func(oldObj, newObj interface{}) {setHandler.podChanged(*(reflect.ValueOf(oldObj).Interface().(*v1.Pod)),*(reflect.ValueOf(newObj).Interface().(*v1.Pod)))},
   })
   return controller
 }
 
 func (setHandler *SetHandler) podAdded(pod v1.Pod) {
+  //The maze wasn't meant for you
+  if !shouldPodBeHandled(pod) {
+    return
+  }
   for _, container := range pod.Spec.Containers {
     cpuset,err := setHandler.determineCorrectCpuset(pod,container)
     if err!=nil {
@@ -74,6 +78,41 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
     }
   }
   return
+}
+
+func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
+  //The maze wasn't meant for you either
+  if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod)  {
+    return
+  }
+  for _, container := range newPod.Spec.Containers {
+    cpuset,err := setHandler.determineCorrectCpuset(newPod,container)
+    if err!=nil {
+      log.Println("ERROR: Cpuset for the containers of Pod:" + string(newPod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+      continue
+    }
+    containerId := determineCid(newPod.Status,container.Name)
+    err = setHandler.applyCpusetToContainer(containerId,cpuset)
+    if err!=nil {
+      log.Println("ERROR: Cpuset for the containers of Pod:" + string(newPod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+      continue
+    }
+  }
+  return
+}
+
+func shouldPodBeHandled(pod v1.Pod) bool {
+  setterNodeName := os.Getenv("NODE_NAME")
+  podNodeName := pod.Spec.NodeName
+  //Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
+  if setterNodeName == "" || podNodeName != "" || setterNodeName != podNodeName {
+    return false
+  }
+  //If the Pod is not running, its containers haven't been created yet - no cpuset cgroup is present to be adjusted by the CPUSetter
+  if pod.Status.Phase != "Running" {
+    return false
+  }
+  return true
 }
 
 func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (types.Pool,error) {
