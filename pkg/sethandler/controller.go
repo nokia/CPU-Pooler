@@ -3,6 +3,7 @@ package sethandler
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"github.com/intel/multus-cni/checkpoint"
 	multusTypes "github.com/intel/multus-cni/types"
 	"github.com/nokia/CPU-Pooler/pkg/types"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,7 +22,7 @@ import (
 )
 
 var (
-	dedicatedPinnerCoreID = "0"
+	dedicatedPinnerCoreID = 0
 	resourceBaseName      = "nokia.k8s.io"
 	processConfigKey      = resourceBaseName + "/cpus"
 )
@@ -71,6 +73,32 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 	if !shouldPodBeHandled(pod) {
 		return
 	}
+	setHandler.adjustContainerSets(pod)
+}
+
+func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
+	//The maze wasn't meant for you either
+	if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod) {
+		return
+	}
+	setHandler.adjustContainerSets(newPod)
+}
+
+func shouldPodBeHandled(pod v1.Pod) bool {
+	setterNodeName := os.Getenv("NODE_NAME")
+	podNodeName := pod.Spec.NodeName
+	//Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
+	if setterNodeName == "" || podNodeName == "" || setterNodeName != podNodeName {
+		return false
+	}
+	//If the Pod is not running, its containers haven't been created yet - no cpuset cgroup is present to be adjusted by the CPUSetter
+	if pod.Status.Phase != "Running" {
+		return false
+	}
+	return true
+}
+
+func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
@@ -84,90 +112,57 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 			continue
 		}
 	}
-	return
 }
 
-func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
-	//The maze wasn't meant for you either
-	if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod) {
-		return
-	}
-	for _, container := range newPod.Spec.Containers {
-		cpuset, err := setHandler.determineCorrectCpuset(newPod, container)
-		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod:" + string(newPod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
-			continue
-		}
-		containerID := determineCid(newPod.Status, container.Name)
-		err = setHandler.applyCpusetToContainer(containerID, cpuset)
-		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod:" + string(newPod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
-			continue
-		}
-	}
-	return
-}
-
-func shouldPodBeHandled(pod v1.Pod) bool {
-	setterNodeName := os.Getenv("NODE_NAME")
-	podNodeName := pod.Spec.NodeName
-	//Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
-	if setterNodeName == "" || podNodeName != "" || setterNodeName != podNodeName {
-		return false
-	}
-	//If the Pod is not running, its containers haven't been created yet - no cpuset cgroup is present to be adjusted by the CPUSetter
-	if pod.Status.Phase != "Running" {
-		return false
-	}
-	return true
-}
-
-func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (types.Pool, error) {
+func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, "shared") {
-			return setHandler.poolConfig.SelectPool(resNameAsString), nil
+			return cpuset.Parse(setHandler.poolConfig.SelectPool(resNameAsString).CPUs)
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, "exclusive") {
 			return setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
 		}
 	}
-	return setHandler.poolConfig.SelectPool(resourceBaseName + "/default"), nil
+	return cpuset.Parse(setHandler.poolConfig.SelectPool(resourceBaseName + "/default").CPUs)
 }
 
-func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (types.Pool, error) {
+func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
 	checkpoint, err := checkpoint.GetCheckpoint()
 	if err != nil {
-		return types.Pool{}, errors.New("Kubelet checkpoint file could not be accessed because:" + err.Error())
+		return cpuset.CPUSet{}, errors.New("Kubelet checkpoint file could not be accessed because:" + err.Error())
 	}
 	podIDStr := string(pod.ObjectMeta.UID)
 	devices, err := checkpoint.GetComputeDeviceMap(podIDStr)
 	if err != nil {
-		return types.Pool{}, errors.New("List of assigned devices could not be read from checkpoint file for Pod: " + podIDStr + " because:" + err.Error())
+		return cpuset.CPUSet{}, errors.New("List of assigned devices could not be read from checkpoint file for Pod: " + podIDStr + " because:" + err.Error())
 	}
 	exclusiveCpus, exist := devices[exclusivePoolName]
 	if !exist {
 		log.Println("WARNING: Container: " + container.Name + " in Pod: " + podIDStr + " asked for exclusive CPUs, but were not allocated any! Cannot adjust its default cpuset")
-		return types.Pool{}, nil
+		return cpuset.CPUSet{}, nil
 	}
 	return calculateFinalExclusiveSet(exclusiveCpus, pod, container)
 }
 
-func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.Pod, container v1.Container) (types.Pool, error) {
-	var finalCPUSet types.Pool
+func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
 	var doesSetContainPinnerCore bool
+	setBuilder := cpuset.NewBuilder()
 	for _, deviceID := range exclusiveCpus.DeviceIDs {
-		finalCPUSet.CPUs = finalCPUSet.CPUs + deviceID + ","
-		if deviceID == dedicatedPinnerCoreID {
+		deviceIDasInt,err := strconv.Atoi(deviceID)
+		if err != nil {
+			return cpuset.CPUSet{}, err
+		}
+		setBuilder.Add(deviceIDasInt)
+		if deviceIDasInt == dedicatedPinnerCoreID {
 			doesSetContainPinnerCore = true
 		}
 	}
 	if isPinnerUsedByContainer(pod, container.Name) && !doesSetContainPinnerCore {
 		//1: Container is asking exclusive CPUs + 2: Container has a pool configured in the annotation = Pinner will be used
 		//If pinner is used by a container, we need to the add the configured CPU core holding its thread to their cpuset
-		finalCPUSet.CPUs = finalCPUSet.CPUs + dedicatedPinnerCoreID + ","
+		setBuilder.Add(dedicatedPinnerCoreID)
 	}
-	finalCPUSet.CPUs = strings.TrimSuffix(finalCPUSet.CPUs, ",")
-	return finalCPUSet, nil
+	return setBuilder.Result(), nil
 }
 
 func isPinnerUsedByContainer(pod v1.Pod, containerName string) bool {
@@ -196,8 +191,8 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 	return ""
 }
 
-func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset types.Pool) error {
-	if cpuset.CPUs == "" {
+func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset cpuset.CPUSet) error {
+	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
 		return nil
 	}
@@ -219,7 +214,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
 	}
 	defer file.Close()
-	_, err = file.WriteString(cpuset.CPUs)
+	_, err = file.WriteString(cpuset.String())
 	if err != nil {
 		return errors.New("Can't modify cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
 	}

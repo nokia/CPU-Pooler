@@ -28,7 +28,7 @@ var PoolConfigDir = "/etc/cpu-pooler"
 //It uses this information to select the specific PoolConfig file corresponding to the Node.
 //Returns the selected PoolConfig file, the name of the file, or an error if it was impossible to determine which config file is applicable.
 func DeterminePoolConfig() (PoolConfig,string,error) {
-	nodeLabels,err := k8sclient.GetNodeLabels()
+	nodeLabels, err := k8sclient.GetNodeLabels()
 	if err != nil {
 		return PoolConfig{}, "", errors.New("Following error happend when trying to read K8s API server Node object:" + err.Error())
 	}
