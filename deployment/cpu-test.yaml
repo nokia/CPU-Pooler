@@ -33,7 +33,9 @@ spec:
     resources:
       requests:
         memory: 2000Mi
+        nokia.k8s.io/shared-pool: "160"
       limits:
+        nokia.k8s.io/shared-pool: "160"
         memory: 2000Mi
   - name: busyloop
     image: busyloop

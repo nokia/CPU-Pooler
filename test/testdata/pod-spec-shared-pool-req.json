@@ -74,13 +74,13 @@
                         ],
                         "resources": {
                             "requests": {
-                                "nokia.com/cpupool2": "2",
-                                "nokia.com/sharedpool": "10",
+                                "nokia.k8s.io/cpupool2": "2",
+                                "nokia.k8s.io/sharedpool": "160",
                                 "memory": "2000Mi"
                             },
                             "limits": {
-                                "nokia.com/cpupool2": "2",
-                                "nokia.com/sharedpool": "10",
+                                "nokia.k8s.io/cpupool2": "2",
+                                "nokia.k8s.io/sharedpool": "160",
                                 "memory": "2000Mi"
                             }
                         }
@@ -109,11 +109,11 @@
                         "imagePullPolicy": "IfNotPresent",
                         "resources": {
                             "requests": {
-                                "nokia.com/cpupool1": "2",
+                                "nokia.k8s.io/cpupool1": "2",
                                 "memory": "2000Mi"
                             },
                             "limits": {
-                                "nokia.com/cpupool1": "2",
+                                "nokia.k8s.io/cpupool1": "2",
                                 "memory": "2000Mi"
                             }
                         }

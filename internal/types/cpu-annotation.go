@@ -41,12 +41,12 @@ var validationErrStr = map[int]string{
 
 // Containers returns container name string in annotation
 func (cpuAnnotation CPUAnnotation) Containers() []string {
-	var containersToPatch []string
+	var containers []string
 
 	for _, cont := range cpuAnnotation {
-		containersToPatch = append(containersToPatch, cont.Name)
+		containers = append(containers, cont.Name)
 	}
-	return containersToPatch
+	return containers
 }
 
 // ContainerSharedCPUTime returns sum of cpu time requested from shared pool by a container
@@ -57,6 +57,23 @@ func (cpuAnnotation CPUAnnotation) ContainerSharedCPUTime(container string) int 
 		if cont.Name == container {
 			for _, process := range cont.Processes {
 				if strings.HasPrefix(process.PoolName, "shared") {
+					cpuTime += process.CPUs
+				}
+			}
+		}
+	}
+	return cpuTime
+
+}
+
+// ContainerExclusiveCPU returns sum of cpu time requested from exclusive pool by a container
+func (cpuAnnotation CPUAnnotation) ContainerExclusiveCPU(container string) int {
+	var cpuTime int
+
+	for _, cont := range cpuAnnotation {
+		if cont.Name == container {
+			for _, process := range cont.Processes {
+				if strings.HasPrefix(process.PoolName, "exclusive") {
 					cpuTime += process.CPUs
 				}
 			}

@@ -136,6 +136,10 @@ func handleAndChekAdmReview(t *testing.T, admReviewReq []byte, expectedPatches [
 			t.Errorf("Admission review response patch unmarshal error %v:%v\n", err, rr.Body)
 			t.FailNow()
 		}
+		if expectedPatches == nil {
+			t.Errorf("Patch received but not expected")
+			t.FailNow()
+		}
 	} else {
 		if expectedPatches != nil {
 			t.Errorf("Patch not received but expected patches defined")
@@ -212,4 +216,55 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 			Value: json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
+}
+func TestMutatePodWrongPoolValueRequest(t *testing.T) {
+
+	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-wrong-pool-value-req.json")
+	if err != nil {
+		t.Errorf("Could not read pod spec")
+	}
+
+	handleAndChekAdmReview(t, admReviewReq, nil, nil)
+}
+func TestMutatePodWrongExclusivePoolValueRequest(t *testing.T) {
+
+	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-wrong-excl-pool-value-req.json")
+	if err != nil {
+		t.Errorf("Could not read pod spec")
+	}
+
+	admReviewResp := handleAndChekAdmReview(t, admReviewReq, nil, nil)
+	if admReviewResp.Response.Allowed == true {
+		t.Errorf("Pod unexpectedly allowed")
+	}
+}
+
+func TestMutateMissinPoolInResource(t *testing.T) {
+
+	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-pool-req-missing.json")
+	if err != nil {
+		t.Errorf("Could not read pod spec")
+	}
+
+	handleAndChekAdmReview(t, admReviewReq, nil, nil)
+}
+
+func TestMutateAnnotationPoolMissingInResource(t *testing.T) {
+
+	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-excl-pool-req-missing.json")
+	if err != nil {
+		t.Errorf("Could not read pod spec")
+	}
+
+	handleAndChekAdmReview(t, admReviewReq, nil, nil)
+}
+
+func TestMutateBothPoolTypesRequestedInResource(t *testing.T) {
+
+	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-both-pool-types-req.json")
+	if err != nil {
+		t.Errorf("Could not read pod spec")
+	}
+
+	handleAndChekAdmReview(t, admReviewReq, nil, nil)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/internal/types"
 	"io/ioutil"
@@ -15,12 +16,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var poolerConf *types.PoolerConfig
+
+type containerPoolRequests struct {
+	sharedCPURequests int
+	pools             map[string]int
+}
+type poolRequestMap map[string]containerPoolRequests
 
 type patch struct {
 	Op    string          `json:"op"`
@@ -33,10 +41,11 @@ func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 		Result: &metav1.Status{
 			Message: err.Error(),
 		},
+		Allowed: false,
 	}
 }
 
-func isContainerPatchNeeded(containerName string, containersToPatch []string) bool {
+func isPinningPatchNeeded(containerName string, containersToPatch []string) bool {
 	for _, name := range containersToPatch {
 		if name == containerName {
 			return true
@@ -44,32 +53,96 @@ func isContainerPatchNeeded(containerName string, containersToPatch []string) bo
 	}
 	return false
 }
+func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
+	var poolRequests = make(poolRequestMap)
+	for _, c := range pod.Spec.Containers {
+		cPoolRequests, exists := poolRequests[c.Name]
+		if !exists {
+			cPoolRequests.pools = make(map[string]int)
+		}
+		var sharedFound, exclusiveFound bool
+		for key, value := range c.Resources.Limits {
+			if strings.HasPrefix(string(key), poolerConf.ResourceBaseName) {
+
+				val, err := strconv.Atoi(value.String())
+				if err != nil {
+					glog.Errorf("Cannot convert cpu request to int %s:%s", key, value.String())
+					return poolRequestMap{}, err
+				}
+				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/shared") {
+					cPoolRequests.sharedCPURequests += val
+					sharedFound = true
+				}
+				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/exclusive") {
+					exclusiveFound = true
+				}
+				poolName := strings.TrimPrefix(string(key), poolerConf.ResourceBaseName+"/")
+				cPoolRequests.pools[poolName] = val
+				poolRequests[c.Name] = cPoolRequests
+			}
+		}
+		if sharedFound && exclusiveFound {
+			return poolRequestMap{}, fmt.Errorf("Only one type of pool is allowed for a container")
+		}
+	}
+	return poolRequests, nil
+}
 
 func annotationNameFromConfig() string {
 	return poolerConf.ResourceBaseName + "/cpus"
 
 }
-func cpuPoolResourcePatch(cpuAnnotation types.CPUAnnotation, pool string, containerIndex int, c *corev1.Container) (patchItem patch) {
-	cpuReq := cpuAnnotation.ContainerTotalCPURequest(pool, c.Name)
-	cpuVal := `"` + strconv.Itoa(cpuReq) + `"`
-	patchItem.Op = "add"
-	if len(c.Resources.Limits) > 0 {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources/limits/" + poolerConf.ResourceBaseName + "~1" + pool
-		patchItem.Value = json.RawMessage(cpuVal)
-	} else {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(containerIndex) + "/resources"
-		patchItem.Value = json.RawMessage(`{ "limits": { "` + poolerConf.ResourceBaseName + "/" + pool + `":` + cpuVal + ` } }`)
-	}
 
-	return patchItem
+func validateAnnotation(poolRequests poolRequestMap, cpuAnnotation types.CPUAnnotation) error {
+	for _, cName := range cpuAnnotation.Containers() {
+		for _, pool := range cpuAnnotation.ContainerPools(cName) {
+			cPoolRequests, exists := poolRequests[cName]
+			if !exists {
+				return fmt.Errorf("Container %s has no pool requests in pod spec",
+					cName)
+			}
+			if cpuAnnotation.ContainerSharedCPUTime(cName) != cPoolRequests.sharedCPURequests {
+				return fmt.Errorf("Shared CPU requests %d do not match to annotation %d",
+					cPoolRequests.sharedCPURequests,
+					cpuAnnotation.ContainerSharedCPUTime(cName))
+			}
+			value, exists := cPoolRequests.pools[pool]
+			if !exists {
+				return fmt.Errorf("Container %s; Pool %s in annotation not found from resources", cName, pool)
+			}
+			if cpuAnnotation.ContainerTotalCPURequest(pool, cName) != value {
+				return fmt.Errorf("Exclusive CPU requests %d do not match to annotation %d",
+					cPoolRequests.pools[pool],
+					cpuAnnotation.ContainerTotalCPURequest(pool, cName))
+			}
+
+		}
+	}
+	return nil
 }
 
-func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
+func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Container) []patch {
+	var patchItem patch
+	patchItem.Op = "add"
+
+	cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
+	if len(c.Resources.Limits) > 0 {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
+		patchItem.Value =
+			json.RawMessage(cpuVal)
+	} else {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources"
+		patchItem.Value = json.RawMessage(`{ "limits": { "cpu":` + cpuVal + ` } }`)
+	}
+	patchList = append(patchList, patchItem)
+	return patchList
+
+}
+
+func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
 
-	glog.V(2).Infof("Adding patches")
-
-	sharedCPUTime := cpuAnnotation.ContainerSharedCPUTime(c.Name)
+	glog.V(2).Infof("Adding CPU pinning patches")
 
 	// podinfo volumeMount
 	patchItem.Op = "add"
@@ -106,29 +179,10 @@ func patchContainer(cpuAnnotation types.CPUAnnotation, patchList []patch, i int,
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
 
-	// Add cpu limit if container requested shared pool cpus
-	if sharedCPUTime > 0 {
-		cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
-		if len(c.Resources.Limits) > 0 {
-			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
-			patchItem.Value =
-				json.RawMessage(cpuVal)
-		} else {
-			patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources"
-			patchItem.Value = json.RawMessage(`{ "limits": { "cpu":` + cpuVal + ` } }`)
-		}
-		patchList = append(patchList, patchItem)
-	}
-	// CPU pool recource request/limit from all pools of container
-	for _, pool := range cpuAnnotation.ContainerPools(c.Name) {
-		patchItem = cpuPoolResourcePatch(cpuAnnotation, pool, i, c)
-		patchList = append(patchList, patchItem)
-	}
-
 	return patchList, nil
 }
 
-func patchVolumes(patchList []patch) []patch {
+func patchVolumesForPinning(patchList []patch) []patch {
 	var patchItem patch
 	patchItem.Op = "add"
 
@@ -151,8 +205,13 @@ func patchVolumes(patchList []patch) []patch {
 
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	glog.V(2).Info("mutating pods")
-	var patchList []patch
-	var err error
+	var (
+		patchList         []patch
+		err               error
+		cpuAnnotation     types.CPUAnnotation
+		containersToPatch []string
+		pinningPatchAdded bool
+	)
 
 	podResource := metav1.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 	if ar.Request.Resource != podResource {
@@ -174,40 +233,53 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	reviewResponse.Allowed = true
 
-	// Mutate containers if cpu annotation exists.
-	if podAnnotation, exists := pod.ObjectMeta.Annotations[annotationName]; exists {
-		glog.V(2).Infof("mutatePod : Annotation %v", podAnnotation)
+	podAnnotation, podAnnotationExists := pod.ObjectMeta.Annotations[annotationName]
 
-		cpuAnnotation := types.CPUAnnotation{}
+	poolRequests, err := getCPUPoolRequests(&pod)
+	if err != nil {
+		glog.Errorf("Failed to get pod cpu pool requests: %v", err)
+		return toAdmissionResponse(err)
+	}
+
+	if podAnnotationExists {
+		cpuAnnotation = types.CPUAnnotation{}
 
 		err = cpuAnnotation.Decode([]byte(podAnnotation))
 		if err != nil {
 			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
 		}
-		containersToPatch := cpuAnnotation.Containers()
-
-		glog.V(2).Infof("Patch containers %v", containersToPatch)
-
-		// Patch container if needed.
-		for i, c := range pod.Spec.Containers {
-			if isContainerPatchNeeded(c.Name, containersToPatch) {
-				patchList, err = patchContainer(cpuAnnotation, patchList, i, &c)
-				if err != nil {
-					return toAdmissionResponse(err)
-				}
-			}
+		containersToPatch = cpuAnnotation.Containers()
+		if err = validateAnnotation(poolRequests, cpuAnnotation); err != nil {
+			glog.Error(err)
+			return toAdmissionResponse(err)
 		}
-		// Add volumes if any container was patched
-		if len(patchList) > 0 {
-			patchList = patchVolumes(patchList)
-		} else {
-			glog.Errorf("CPU annotation exists but no container was patched %v:%v",
-				cpuAnnotation, pod.Spec.Containers)
-			return toAdmissionResponse(errors.New("CPU Annotation error"))
-		}
-
+		glog.V(2).Infof("Patch containers for pinning %v", containersToPatch)
 	}
+
+	// Patch container if needed.
+	for i, c := range pod.Spec.Containers {
+		if poolRequests[c.Name].sharedCPURequests > 0 {
+			patchList = patchCPULimit(poolRequests[c.Name].sharedCPURequests,
+				patchList, i, &c)
+		}
+		if isPinningPatchNeeded(c.Name, containersToPatch) {
+			patchList, err = patchContainerForPinning(cpuAnnotation, patchList, i, &c)
+			if err != nil {
+				return toAdmissionResponse(err)
+			}
+			pinningPatchAdded = true
+		}
+	}
+	// Add volumes if any container was patched for pinning
+	if pinningPatchAdded {
+		patchList = patchVolumesForPinning(patchList)
+	} else if podAnnotationExists {
+		glog.Errorf("CPU annotation exists but no container was patched %v:%v",
+			cpuAnnotation, pod.Spec.Containers)
+		return toAdmissionResponse(errors.New("CPU Annotation error"))
+	}
+
 	if len(patchList) > 0 {
 		patch, err := json.Marshal(patchList)
 		if err != nil {

@@ -72,15 +72,13 @@
                                 "containerPort": 80
                             }
                         ],
-			"resources": {
+                        "resources": {
                             "requests": {
-                                "nokia.k8s.io/exclusive-cpupool1": "4",
-                                "nokia.k8s.io/exclusive-cpupool2": "2",
+                                "nokia.k8s.io/shared-pool": "120",
                                 "memory": "2000Mi"
                             },
                             "limits": {
-                                "nokia.k8s.io/exclusive-cpupool1": "4",
-                                "nokia.k8s.io/exclusive-cpupool2": "2",
+                                "nokia.k8s.io/shared-pool": "120",
                                 "memory": "2000Mi"
                             }
                         }
@@ -92,7 +90,7 @@
                 "namespace": "default",
                 "name": "cpupod",
                 "annotations": {
-                    "nokia.k8s.io/cpus": "[{\n\"container\": \"cputestcontainer\",\n\"processes\":\n  [{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"1\"],\n     \"cpus\": 2,\n     \"pool\": \"exclusive-cpupool1\"\n   }, {\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"2\"],\n     \"cpus\": 2,\n     \"pool\": \"exclusive-cpupool1\"\n   },{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"3\"],\n     \"cpus\": 2,\n     \"pool\": \"exclusive-cpupool2\"\n   }\n]\n}]\n"
+                    "nokia.k8s.io/cpus": "[{\n\"container\": \"cputestcontainer\",\n\"processes\":\n  [{\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\",\"/thread_busyloop -n \\\"Process \\\"1\"],\n     \"cpus\": 150,\n     \"pool\": \"shared-pool\"\n   },\n   {\n     \"process\": \"/bin/sh\",\n     \"args\": [\"-c\", \"/thread_busyloop -n \\\"Process \\\"2\"],\n     \"pool\": \"shared-pool\",\n     \"cpus\": 10\n   } \n]\n}]\n"
                 }
             }
         },
