@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+// GetNodeLabels returns node labels.
+// NODE_NAME environment variable is used to determine the node
 func GetNodeLabels() map[string]string {
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
