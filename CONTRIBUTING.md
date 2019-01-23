@@ -11,7 +11,8 @@ Contributions for the project are warmly welcome. The project uses Go programmin
 * Push the changes to the remote repository using `git push origin <branch-name>`.
 * Submit a pull request to the upstream repository
 * Title the pull request with a short description of the changes made.
-* In the description of the pull request, explain the changes that you made. 
+* In the description of the pull request, explain the changes that you made.
+* `Squash and merge` will be used for merging the PR so please format the PR with that in mind. If really needed, other merge options can be used.
 * Wait for the pull request to be reviewed by a maintainer.
 * Make changes to the pull request if the reviewing maintainer recommends them.
 
