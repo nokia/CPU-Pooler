@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/nokia/CPU-Pooler/internal/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,15 +13,6 @@ import (
 	"testing"
 )
 
-func init() {
-	types.PoolerConfigDir = "../../test/testdata/cpu-pooler"
-	var err error
-	poolerConf, err = types.ReadPoolerConfig()
-	if err != nil {
-		panic(err)
-	}
-
-}
 func createAdmReviewReq(t *testing.T, containers []corev1.Container) []byte {
 	pod := corev1.Pod{}
 	pod.Spec.Containers = make([]corev1.Container, 0)

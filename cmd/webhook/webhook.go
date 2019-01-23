@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/internal/types"
+	"github.com/nokia/CPU-Pooler/pkg/types"
 	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,7 +22,7 @@ import (
 
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
-var poolerConf *types.PoolerConfig
+var resourceBaseName = "nokia.k8s.io"
 
 type containerPoolRequests struct {
 	sharedCPURequests int
@@ -62,21 +62,21 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 		}
 		var sharedFound, exclusiveFound bool
 		for key, value := range c.Resources.Limits {
-			if strings.HasPrefix(string(key), poolerConf.ResourceBaseName) {
+			if strings.HasPrefix(string(key), resourceBaseName) {
 
 				val, err := strconv.Atoi(value.String())
 				if err != nil {
 					glog.Errorf("Cannot convert cpu request to int %s:%s", key, value.String())
 					return poolRequestMap{}, err
 				}
-				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/shared") {
+				if strings.HasPrefix(string(key), resourceBaseName+"/shared") {
 					cPoolRequests.sharedCPURequests += val
 					sharedFound = true
 				}
-				if strings.HasPrefix(string(key), poolerConf.ResourceBaseName+"/exclusive") {
+				if strings.HasPrefix(string(key), resourceBaseName+"/exclusive") {
 					exclusiveFound = true
 				}
-				poolName := strings.TrimPrefix(string(key), poolerConf.ResourceBaseName+"/")
+				poolName := strings.TrimPrefix(string(key), resourceBaseName+"/")
 				cPoolRequests.pools[poolName] = val
 				poolRequests[c.Name] = cPoolRequests
 			}
@@ -89,7 +89,7 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 }
 
 func annotationNameFromConfig() string {
-	return poolerConf.ResourceBaseName + "/cpus"
+	return resourceBaseName + "/cpus"
 
 }
 
@@ -353,10 +353,6 @@ func main() {
 		glog.Fatal(err)
 	}
 
-	poolerConf, err = types.ReadPoolerConfig()
-	if err != nil {
-		glog.Fatal(err)
-	}
 	http.HandleFunc("/mutating-pods", serveMutatePod)
 	server := &http.Server{
 		Addr:         ":443",
