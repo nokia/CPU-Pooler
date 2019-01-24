@@ -172,14 +172,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:4f485d5a08a2f1d2df6aff33fa67064d6dd08f907c74eeb159f690274fe76c3f"
-  name = "github.com/nokia/CPU-Pooler"
-  packages = ["pkg/k8sclient"]
-  pruneopts = "UT"
-  revision = "4e2d50f6e38fa0b365c252530dd8bf50f5fe2052"
-
-[[projects]]
-  branch = "master"
   digest = "1:3bf17a6e6eaa6ad24152148a631d18662f7212e21637c2699bff3369b7f00fa2"
   name = "github.com/petar/GoLLRB"
   packages = ["llrb"]
@@ -636,7 +628,6 @@
     "github.com/golang/glog",
     "github.com/intel/multus-cni/checkpoint",
     "github.com/intel/multus-cni/types",
-    "github.com/nokia/CPU-Pooler/pkg/k8sclient",
     "golang.org/x/net/context",
     "golang.org/x/sys/unix",
     "google.golang.org/grpc",
