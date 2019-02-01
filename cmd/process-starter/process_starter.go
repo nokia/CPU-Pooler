@@ -93,15 +93,8 @@ func main() {
 	var cmds []*exec.Cmd
 	completionChannel := make(chan int, 10)
 	myContainerName := os.Getenv("CONTAINER_NAME")
-	poolConfigFileName := os.Getenv("POOL_CONFIG_FILE")
-	exclCPUs := os.Getenv("EXCLUSIVE_CPUS")
-	exclCPUList := cpuListStrToIntSlice(exclCPUs)
-	fmt.Printf("Exclusive cpu list %v\n", exclCPUList)
-
-	poolConf, err := types.ReadPoolConfigFile(poolConfigFileName)
-	if err != nil {
-		panic("Configuration error")
-	}
+	exclCPUs := cpuListStrToIntSlice(os.Getenv("EXCLUSIVE_CPUS"))
+	fmt.Printf("Exclusive cpu list %v\n", exclCPUs)
 
 	if myContainerName == "" {
 		panic("CONTAINER_NAME envrionment variable not found")
@@ -117,20 +110,11 @@ func main() {
 			fmt.Printf("\n")
 			cmd := exec.Command(process.ProcName, process.Args...)
 			if strings.HasPrefix(process.PoolName, "exclusive") {
-				exclCPUList = setAffinity(process.CPUs, exclCPUList)
-				if nil == exclCPUList {
+				exclCPUs = setAffinity(process.CPUs, exclCPUs)
+				if nil == exclCPUs {
 					fmt.Printf("Failed to set affinity")
 					os.Exit(1)
 				}
-			} else {
-				/* It is shared pool */
-				sharedCPUList := cpuListStrToIntSlice(poolConf.Pools[process.PoolName].CPUs)
-				setAffinity(len(sharedCPUList), sharedCPUList)
-				if nil == sharedCPUList {
-					fmt.Printf("Failed to set affinity")
-					os.Exit(1)
-				}
-
 			}
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -146,6 +130,10 @@ func main() {
 		fmt.Printf("No processes to be started found from annotations\n")
 		os.Exit(1)
 	}
+	// Get default pool from env variable
+	cpuSet := new(unix.CPUSet)
+	cpuSet.Set(0)
+	unix.SchedSetaffinity(0, cpuSet)
 	select {
 	case cmdIndex := <-completionChannel:
 		fmt.Printf("Command index %d ended\n", cmdIndex)

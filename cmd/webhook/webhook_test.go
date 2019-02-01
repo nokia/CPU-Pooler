@@ -164,8 +164,6 @@ func TestMutatePodSharedCpu(t *testing.T) {
 			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
-		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"mountPath":"/etc/cpu-pooler","readOnly":true,"name":"cpu-pooler-config"}`)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
@@ -174,8 +172,6 @@ func TestMutatePodSharedCpu(t *testing.T) {
 			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
-		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }
@@ -192,8 +188,6 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
-		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"mountPath":"/etc/cpu-pooler","readOnly":true,"name":"cpu-pooler-config"}`)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
@@ -202,8 +196,6 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
-		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }

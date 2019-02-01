@@ -157,12 +157,6 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 		json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)
 	patchList = append(patchList, patchItem)
 
-	//  device plugin config volumeMount.
-	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
-	patchItem.Value =
-		json.RawMessage(`{"name":"cpu-pooler-config","mountPath":"/etc/cpu-pooler","readOnly":true}`)
-	patchList = append(patchList, patchItem)
-
 	// Container name to env variable
 	contNameEnvPatch := `{"name":"CONTAINER_NAME","value":"` + c.Name + `" }`
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/env"
@@ -195,10 +189,6 @@ func patchVolumesForPinning(patchList []patch) []patch {
 	patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
 	patchList = append(patchList, patchItem)
 
-	// cpu dp configmap volume
-	patchItem.Path = "/spec/volumes/-"
-	patchItem.Value = json.RawMessage(`{"name":"cpu-pooler-config","configMap":{ "name":"cpu-pooler-configmap"} }`)
-	patchList = append(patchList, patchItem)
 	return patchList
 
 }
