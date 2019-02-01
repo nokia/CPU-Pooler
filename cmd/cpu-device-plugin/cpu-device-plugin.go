@@ -20,7 +20,6 @@ import (
 	"time"
 )
 
-var poolConfFileName string
 var resourceBaseName = "nokia.k8s.io"
 
 type cpuDeviceManager struct {
@@ -132,7 +131,6 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 		} else {
 			envmap["EXCLUSIVE_CPUS"] = cpusAllocated[:len(cpusAllocated)-1]
 		}
-		envmap["POOL_CONFIG_FILE"] = poolConfFileName
 		containerResp := new(pluginapi.ContainerAllocateResponse)
 		glog.Infof("CPUs allocated: %s: Num of CPUs %s", cpusAllocated[:len(cpusAllocated)-1],
 			strconv.Itoa(len(container.DevicesIDs)))
@@ -202,7 +200,7 @@ func createPluginsForPools() error {
 		}
 	}
 	var sharedCPUs string
-	poolConf,_,err := types.DeterminePoolConfig()
+	poolConf, _, err := types.DeterminePoolConfig()
 	if err != nil {
 		glog.Fatal(err)
 	}
