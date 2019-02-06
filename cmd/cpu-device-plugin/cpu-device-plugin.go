@@ -20,7 +20,10 @@ import (
 	"time"
 )
 
-var resourceBaseName = "nokia.k8s.io"
+var (
+	resourceBaseName = "nokia.k8s.io"
+	cdms []*cpuDeviceManager
+)
 
 type cpuDeviceManager struct {
 	pool           types.Pool
@@ -55,7 +58,6 @@ func (cdm *cpuDeviceManager) Start() error {
 			return net.DialTimeout("unix", addr, timeout)
 		}),
 	)
-
 	if err != nil {
 		glog.Errorf("Error. Could not establish connection with gRPC server: %v", err)
 		return err
@@ -70,7 +72,6 @@ func (cdm *cpuDeviceManager) cleanup() error {
 	if err := os.Remove(pluginEndpoint); err != nil && !os.IsNotExist(err) {
 		return err
 	}
-
 	return nil
 }
 
@@ -79,13 +80,9 @@ func (cdm *cpuDeviceManager) Stop() error {
 	if cdm.grpcServer == nil {
 		return nil
 	}
-
 	cdm.grpcServer.Stop()
 	cdm.grpcServer = nil
-
 	return cdm.cleanup()
-
-	return nil
 }
 
 func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.DevicePlugin_ListAndWatchServer) error {
@@ -108,7 +105,6 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 				glog.Errorf("Error. Cannot update device states: %v\n", err)
 				return err
 			}
-
 			updateNeeded = false
 		}
 		//TODO: When is update needed ?
@@ -171,21 +167,12 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 }
 
 func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
-
-	var poolType string
 	glog.Infof("Starting plugin for pool: %s", poolName)
-
-	if strings.HasPrefix(poolName, "shared") {
-		poolType = "shared"
-	} else {
-		poolType = "exclusive"
-	}
-
 	return &cpuDeviceManager{
 		pool:           pool,
 		socketFile:     fmt.Sprintf("cpudp_%s.sock", poolName),
 		sharedPoolCPUs: sharedCPUs,
-		poolType:       poolType,
+		poolType:       types.DeterminePoolType(poolName),
 	}
 }
 
@@ -199,14 +186,19 @@ func createPluginsForPools() error {
 			glog.Fatal(err)
 		}
 	}
-	var sharedCPUs string
 	poolConf, _, err := types.DeterminePoolConfig()
 	if err != nil {
 		glog.Fatal(err)
 	}
 	glog.Infof("Pool configuration %v", poolConf)
+	var sharedCPUs string
 	for poolName, pool := range poolConf.Pools {
-		if strings.HasPrefix(poolName, "shared") {
+		poolType := types.DeterminePoolType(poolName)
+		//Deault or unrecognizable pools need not be made available to Device Manager as schedulable devices
+		if poolType == types.DefaultPoolID {
+			continue
+		}
+		if poolType == types.SharedPoolID {
 			if sharedCPUs != "" {
 				err = fmt.Errorf("Only one shared pool allowed")
 				glog.Errorf("Pool config : %v", poolConf)
@@ -237,8 +229,6 @@ func createPluginsForPools() error {
 	}
 	return err
 }
-
-var cdms []*cpuDeviceManager
 
 func main() {
 	flag.Parse()

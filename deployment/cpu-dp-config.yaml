@@ -3,8 +3,6 @@ kind: ConfigMap
 metadata:
   name: cpu-pooler-configmap
 data:
-  cpu-pooler.yaml: |
-    resourceBaseName: "nokia.k8s.io"
   poolconfig-controller.yaml: |
     pools: 
       exclusive-pool:
