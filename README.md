@@ -22,8 +22,6 @@ kind: ConfigMap
 metadata:
   name: cpu-pooler-configmap
 data:
-  cpu-pooler.yaml: |
-    resourceBaseName: "<name>"
   poolconfig-<name>.yaml: |
     pools:
       <poolname1>:
@@ -33,19 +31,21 @@ data:
       nodeSelector:
         <key> : <value>
 ```
-The cpu-pooler.yaml file must exist in the data section. It defines the resourceBaseName field which is the advertised resource name without the resource - i.e only the `vendor-domain`.
+The cpu-pooler.yaml file must exist in the data section.
 The cpu pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
-Pool name from the config will be the resource in the fully qualified resource name (`<resurceBaseName>/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive cpu pool or 'shared' for shared cpu pool. The nodeSelector is used to tell in which node this pool configuration is used. CPU pooler reads the node labels and selects the config that matches the nodeSelector.
+Pool name from the config will be the resource in the fully qualified resource name (`nokia.k8s.io/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive cpu pool or 'shared' for shared cpu pool.
+A CPU pool not having either of these special prefixes is considered as the cluster-wide 'default' CPU pool, and as such, CPU cores belonging to this pool will not be advertised to the Device Manager as schedulable resources.
+The nodeSelector is used to tell in which node this pool configuration is used. CPU pooler reads the node labels and selects the config that matches the nodeSelector.
 
 In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu). Nodes for the pool configurations are selected by `nodeType` label.
 
 ### Pod spec
 
-The cpu-device-plugin advertises the resources as name: `<resoruceBaseName>/<poolname>`. The poolname is pool name configured in cpu-pooler-configmap. The cpus are requested in the resources section of container in the pod spec.
+The cpu-device-plugin advertises the resources of exclusive, and shared CPU pools as name: `nokia.k8s.io/<poolname>`. The poolname is pool name configured in cpu-pooler-configmap. The cpus are requested in the resources section of container in the pod spec.
 
 ### Annotation:
 
-Annotation schema is following and the name for the annotation is `<resourceBaseName>/cpus`. Resource being the the advertised resource name.
+Annotation schema is following and the name for the annotation is `nokia.k8s.io/cpus`. Resource being the the advertised resource name.
 ```
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -109,6 +109,7 @@ Following restrictions apply when allocating cpu from pools and configuring pool
 
 * There can be only one shared pool in the node
 * Containter can ask cpus from one type of pool only (shared or exclusive)
+* Resources belonging to the default pool are not advertised. The default pool definition is only used by the CPUSetter component
 
 ## Build
 

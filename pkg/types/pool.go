@@ -10,6 +10,19 @@ import (
 	"path/filepath"
 )
 
+const (
+//SharedPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of shared type
+	SharedPoolID = "shared"
+//ExclusivePoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of exclusive type
+	ExclusivePoolID = "exclusive"
+//DefaultPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of default type
+	DefaultPoolID = "default"
+)
+
+var (
+//PoolConfigDir defines the pool configuration file location
+	PoolConfigDir = "/etc/cpu-pooler"
+)
 // Pool defines cpupool
 type Pool struct {
 	CPUs string `yaml:"cpus"`
@@ -21,8 +34,17 @@ type PoolConfig struct {
 	NodeSelector map[string]string `yaml:"nodeSelector"`
 }
 
-// PoolConfigDir defines the pool configuration file location
-var PoolConfigDir = "/etc/cpu-pooler"
+//DeterminePoolType takes the name of CPU pool as defined in the CPU-Pooler ConfigMap, and returns the type of CPU pool it represents.
+//Type of the pool is determined based on the constant prefixes used in the name of the pool.
+//A type can be shared, exclusive, or default.
+func DeterminePoolType(poolName string) string {
+	if strings.HasPrefix(poolName, SharedPoolID) {
+		return SharedPoolID
+	} else if strings.HasPrefix(poolName, ExclusivePoolID) {
+		return ExclusivePoolID  
+	}
+	return DefaultPoolID
+}
 
 //DeterminePoolConfig first interrogates the label set of the Node this process runs on.
 //It uses this information to select the specific PoolConfig file corresponding to the Node.
