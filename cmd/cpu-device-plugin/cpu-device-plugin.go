@@ -15,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -91,14 +90,14 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 		if updateNeeded {
 			resp := new(pluginapi.ListAndWatchResponse)
 			if cdm.poolType == "shared" {
-				nbrOfCPUs := len(strings.Split(cdm.pool.CPUs, ","))
+				nbrOfCPUs := cdm.pool.CPUs.Size()
 				for i := 0; i < nbrOfCPUs*1000; i++ {
 					cpuID := strconv.Itoa(i)
 					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuID, pluginapi.Healthy})
 				}
 			} else {
-				for _, cpuID := range strings.Split(cdm.pool.CPUs, ",") {
-					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuID, pluginapi.Healthy})
+				for _, cpuID := range cdm.pool.CPUs.ToSlice() {
+					resp.Devices = append(resp.Devices, &pluginapi.Device{strconv.Itoa(cpuID), pluginapi.Healthy})
 				}
 			}
 			if err := stream.Send(resp); err != nil {
@@ -204,7 +203,7 @@ func createPluginsForPools() error {
 				glog.Errorf("Pool config : %v", poolConf)
 				break
 			}
-			sharedCPUs = pool.CPUs
+			sharedCPUs = pool.CPUs.String()
 		}
 		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)
 		if err := cdm.Start(); err != nil {

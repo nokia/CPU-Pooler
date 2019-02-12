@@ -8,6 +8,7 @@ import (
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"io/ioutil"
 	"path/filepath"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 const (
@@ -25,13 +26,13 @@ var (
 )
 // Pool defines cpupool
 type Pool struct {
-	CPUs string `yaml:"cpus"`
+	CPUs   cpuset.CPUSet
 }
 
 // PoolConfig defines pool configuration for a node
 type PoolConfig struct {
-	Pools        map[string]Pool   `yaml:"pools"`
-	NodeSelector map[string]string `yaml:"nodeSelector"`
+	Pools        map[string]Pool
+	NodeSelector map[string]string
 }
 
 //DeterminePoolType takes the name of CPU pool as defined in the CPU-Pooler ConfigMap, and returns the type of CPU pool it represents.
@@ -41,7 +42,7 @@ func DeterminePoolType(poolName string) string {
 	if strings.HasPrefix(poolName, SharedPoolID) {
 		return SharedPoolID
 	} else if strings.HasPrefix(poolName, ExclusivePoolID) {
-		return ExclusivePoolID  
+		return ExclusivePoolID
 	}
 	return DefaultPoolID
 }
@@ -87,13 +88,29 @@ func readPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
 // ReadPoolConfigFile reads a pool configuration file
 func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	var pools PoolConfig
+	var parsePools struct {
+		Pools        map[string]struct{
+				CPUStr string        `yaml:"cpus"`
+			}   `yaml:"pools"`
+		NodeSelector map[string]string `yaml:"nodeSelector"`
+	}
 	file, err := ioutil.ReadFile(name)
 	if err != nil {
 		return PoolConfig{}, errors.New("Could not read poolconfig file named: " + name + " because:" + err.Error())
 	}
-	err = yaml.Unmarshal([]byte(file), &pools)
+	err = yaml.Unmarshal([]byte(file), &parsePools)
 	if err != nil {
 		return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
+	}
+	pools.NodeSelector = parsePools.NodeSelector
+	pools.Pools = map[string]Pool{}
+	for pool := range parsePools.Pools {
+		temp := pools.Pools[pool]
+		temp.CPUs, err = cpuset.Parse(parsePools.Pools[pool].CPUStr)
+		if err != nil {
+			return PoolConfig{}, errors.New("CPUs could not be parsed because:" + err.Error())
+		}
+		pools.Pools[pool] = temp
 	}
 	return pools, err
 }
