@@ -175,6 +175,50 @@ func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *c
 	}
 }
 
+func validatePools(poolConf types.PoolConfig) (string, error) {
+	var sharedCPUs string
+	var err error
+	for poolName, pool := range poolConf.Pools {
+		poolType := types.DeterminePoolType(poolName)
+		if poolType == types.SharedPoolID {
+			if sharedCPUs != "" {
+				err = fmt.Errorf("Only one shared pool allowed")
+				glog.Errorf("Pool config : %v", poolConf)
+				break
+			}
+			sharedCPUs = pool.CPUs.String()
+		}
+	}
+	return sharedCPUs, err
+}
+
+func createCDMs(poolConf types.PoolConfig, sharedCPUs string) error {
+	var err error
+	for poolName, pool := range poolConf.Pools {
+		poolType := types.DeterminePoolType(poolName)
+		//Deault or unrecognizable pools need not be made available to Device Manager as schedulable devices
+		if poolType == types.DefaultPoolID {
+			continue
+		}
+		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)
+		cdms = append(cdms, cdm)
+		if err := cdm.Start(); err != nil {
+			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
+			break
+		}
+		resourceName := resourceBaseName + "/" + poolName
+		err := cdm.Register(path.Join(pluginapi.DevicePluginPath, "kubelet.sock"), resourceName)
+		if err != nil {
+			// Stop server
+			cdm.grpcServer.Stop()
+			glog.Error(err)
+			break
+		}
+		glog.Infof("CPU device plugin registered with the Kubelet")
+	}
+	return err
+}
+
 func createPluginsForPools() error {
 	files, err := filepath.Glob(filepath.Join(pluginapi.DevicePluginPath, "cpudp*"))
 	if err != nil {
@@ -190,38 +234,14 @@ func createPluginsForPools() error {
 		glog.Fatal(err)
 	}
 	glog.Infof("Pool configuration %v", poolConf)
+
 	var sharedCPUs string
-	for poolName, pool := range poolConf.Pools {
-		poolType := types.DeterminePoolType(poolName)
-		//Deault or unrecognizable pools need not be made available to Device Manager as schedulable devices
-		if poolType == types.DefaultPoolID {
-			continue
-		}
-		if poolType == types.SharedPoolID {
-			if sharedCPUs != "" {
-				err = fmt.Errorf("Only one shared pool allowed")
-				glog.Errorf("Pool config : %v", poolConf)
-				break
-			}
-			sharedCPUs = pool.CPUs.String()
-		}
-		cdm := newCPUDeviceManager(poolName, pool, sharedCPUs)
-		if err := cdm.Start(); err != nil {
-			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
-			break
-		}
-		resourceName := resourceBaseName + "/" + poolName
-		err := cdm.Register(path.Join(pluginapi.DevicePluginPath, "kubelet.sock"), resourceName)
-		if err != nil {
-			// Stop server
-			cdm.grpcServer.Stop()
-			glog.Error(err)
-			break
-		}
-		cdms = append(cdms, cdm)
-		glog.Infof("CPU device plugin registered with the Kubelet")
-	}
+	sharedCPUs, err = validatePools(poolConf)
 	if err != nil {
+		return err
+	}
+
+	if err := createCDMs(poolConf, sharedCPUs); err != nil {
 		for _, cdm := range cdms {
 			cdm.Stop()
 		}

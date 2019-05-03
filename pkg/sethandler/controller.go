@@ -215,6 +215,13 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		return errors.New("cpuset file does not exist for container:" + trimmedCid + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
+  //Find child cpuset if it exists (kube-proxy)
+	filepath.Walk(pathToContainerCpusetFile, func(path string, f os.FileInfo, err error) error {
+		if f.IsDir() {
+			pathToContainerCpusetFile = path
+		}
+		return nil
+	})
 	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
