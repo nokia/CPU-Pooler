@@ -120,7 +120,15 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 		envmap := make(map[string]string)
 		cpusAllocated := ""
 		for _, id := range container.DevicesIDs {
-			cpusAllocated = cpusAllocated + id + ","
+			if strings.Contains(id, "-"){
+				first,_ := strconv.Atoi(strings.Split(id,"-")[0])
+				last,_ := strconv.Atoi(strings.Split(id,"-")[1])
+				for i:= first;i<=last;i++{
+					cpusAllocated = cpusAllocated + strconv.Itoa(i) + ","
+				}
+			} else {
+				cpusAllocated = cpusAllocated + id + ","
+			}
 		}
 		if cdm.poolType == "shared" {
 			envmap["SHARED_CPUS"] = cdm.sharedPoolCPUs
