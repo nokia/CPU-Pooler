@@ -78,8 +78,11 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 
 func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
 	//The maze wasn't meant for you either
-	log.Printf("LOFASZ OldPod: %+v\n", oldPod.Spec)
-	log.Printf("LOFASZ NewPod: %+v\n", newPod.Spec)
+	log.Printf("LOFASZ OldPod Spec: %+v\n", oldPod.Spec)
+	log.Printf("LOFASZ OldPod Status: %+v\n", oldPod.Status)
+	log.Printf("LOFASZ NewPod Spec: %+v\n", newPod.Spec)
+	log.Printf("LOFASZ NewPod Status: %+v\n", newPod.Status)
+
 	if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod) {
 		return
 	}
