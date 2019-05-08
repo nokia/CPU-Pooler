@@ -78,16 +78,12 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 
 func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
 	//The maze wasn't meant for you either
-	log.Printf("LOFASZ OldPod TypeMeta: %+v\n", oldPod.TypeMeta)
 	log.Printf("LOFASZ OldPod ObjectMeta: %+v\n", oldPod.ObjectMeta)
-	log.Printf("LOFASZ OldPod Spec: %+v\n", oldPod.Spec)
 	log.Printf("LOFASZ OldPod Status: %+v\n", oldPod.Status)
-	log.Printf("LOFASZ NewPod TypeMeta: %+v\n", newPod.TypeMeta)
 	log.Printf("LOFASZ NewPod ObjectMeta: %+v\n", newPod.ObjectMeta)
-	log.Printf("LOFASZ NewPod Spec: %+v\n", newPod.Spec)
 	log.Printf("LOFASZ NewPod Status: %+v\n", newPod.Status)
 
-	if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod) {
+	if (shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod)) && !podRestarted(oldPod, newPod) {
 		return
 	}
 	setHandler.adjustContainerSets(newPod)
@@ -105,6 +101,24 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 		return false
 	}
 	return true
+}
+
+func podRestarted(oldPod, newPod v1.Pod ) bool {
+	oldContainerStatuses := oldPod.Status.ContainerStatuses
+	newContainerStatuses := newPod.Status.ContainerStatuses
+	log.Println("LOFASZ: podStarted called")
+	for i, _ := range oldContainerStatuses {
+		for j, _ := range newContainerStatuses {
+			if oldContainerStatuses[i].Name == newContainerStatuses[j].Name {
+				if oldContainerStatuses[i].ContainerID != "" && oldContainerStatuses[i].ContainerID != newContainerStatuses[j].ContainerID {
+					log.Println("LOFASZ: POD restarted: " + oldContainerStatuses[i].ContainerID + " ," + newContainerStatuses[j].ContainerID)
+					return true
+				}
+				log.Println("LOFASZ: old ID: " + oldContainerStatuses[i].ContainerID + " new ID: " + newContainerStatuses[j].ContainerID)
+			}
+		}
+	}
+	return false
 }
 
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
