@@ -129,12 +129,12 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
-			return setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs
+			return setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs, nil
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
 			return setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
 		}
 	}
-	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs
+	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs, nil
 }
 
 func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
