@@ -91,7 +91,6 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 		if updateNeeded {
 			resp := new(pluginapi.ListAndWatchResponse)
 			if cdm.poolType == "shared" {
-				// nbrOfCPUs := len(strings.Split(cdm.pool.CPUs, ","))
 				nbrOfCPUs := cdm.pool.CPUs.Size()
 				for i := 0; i < nbrOfCPUs*1000; i++ {
 					cpuID := strconv.Itoa(i)
