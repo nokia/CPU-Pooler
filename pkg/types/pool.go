@@ -8,6 +8,7 @@ import (
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"io/ioutil"
 	"path/filepath"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 const (
@@ -25,7 +26,7 @@ var (
 )
 // Pool defines cpupool
 type Pool struct {
-	CPUs string `yaml:"cpus"`
+	CPUs cpuset.CPUSet `yaml:"cpus"`
 }
 
 // PoolConfig defines pool configuration for a node
@@ -41,7 +42,7 @@ func DeterminePoolType(poolName string) string {
 	if strings.HasPrefix(poolName, SharedPoolID) {
 		return SharedPoolID
 	} else if strings.HasPrefix(poolName, ExclusivePoolID) {
-		return ExclusivePoolID  
+		return ExclusivePoolID
 	}
 	return DefaultPoolID
 }

@@ -83,7 +83,7 @@ func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
 	log.Printf("LOFASZ NewPod ObjectMeta: %+v\n", newPod.ObjectMeta)
 	log.Printf("LOFASZ NewPod Status: %+v\n", newPod.Status)
 
-	if (shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod)) && !podRestarted(oldPod, newPod) {
+	if !shouldPodBeHandled(newPod) {
 		return
 	}
 	setHandler.adjustContainerSets(newPod)
@@ -103,25 +103,13 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 	return true
 }
 
-func podRestarted(oldPod, newPod v1.Pod ) bool {
-	oldContainerStatuses := oldPod.Status.ContainerStatuses
-	newContainerStatuses := newPod.Status.ContainerStatuses
-	log.Println("LOFASZ: podStarted called")
-	for i, _ := range oldContainerStatuses {
-		for j, _ := range newContainerStatuses {
-			if oldContainerStatuses[i].Name == newContainerStatuses[j].Name {
-				if oldContainerStatuses[i].ContainerID != "" && oldContainerStatuses[i].ContainerID != newContainerStatuses[j].ContainerID {
-					log.Println("LOFASZ: POD restarted: " + oldContainerStatuses[i].ContainerID + " ," + newContainerStatuses[j].ContainerID)
-					return true
-				}
-				log.Println("LOFASZ: old ID: " + oldContainerStatuses[i].ContainerID + " new ID: " + newContainerStatuses[j].ContainerID)
-			}
+func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if !containerStatus.Ready {
+			log.Println("LOFASZ: ERROR - container " + containerStatus.Name + " not READY!")
+			return
 		}
 	}
-	return false
-}
-
-func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
