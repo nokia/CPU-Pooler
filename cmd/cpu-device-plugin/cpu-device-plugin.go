@@ -98,6 +98,7 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 				}
 			} else {
 				for _, cpuID := range cdm.pool.CPUs.ToSlice() {
+					glog.Infof("LOFASZ: cpuID %d", cpuID)
 					resp.Devices = append(resp.Devices, &pluginapi.Device{strconv.Itoa(cpuID), pluginapi.Healthy})
 				}
 			}
@@ -120,15 +121,7 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 		envmap := make(map[string]string)
 		cpusAllocated := ""
 		for _, id := range container.DevicesIDs {
-			if strings.Contains(id, "-"){
-				first,_ := strconv.Atoi(strings.Split(id,"-")[0])
-				last,_ := strconv.Atoi(strings.Split(id,"-")[1])
-				for i:= first;i<=last;i++{
-					cpusAllocated = cpusAllocated + strconv.Itoa(i) + ","
-				}
-			} else {
-				cpusAllocated = cpusAllocated + id + ","
-			}
+			cpusAllocated = cpusAllocated + id + ","
 		}
 		if cdm.poolType == "shared" {
 			envmap["SHARED_CPUS"] = cdm.sharedPoolCPUs
@@ -175,7 +168,8 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 }
 
 func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
-	glog.Infof("Starting plugin for pool: %s", poolName)
+	// glog.Infof("Starting plugin for pool: %s", poolName)
+	glog.Infof("LOFASZ :Starting plugin for pool: %s cpus: %s", poolName, pool.CPUs.String())
 	return &cpuDeviceManager{
 		pool:           pool,
 		socketFile:     fmt.Sprintf("cpudp_%s.sock", poolName),

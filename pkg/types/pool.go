@@ -96,6 +96,7 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	if err != nil {
 		return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
 	}
+	glog.Infof("LOFASZ ReadPoolConfigFile PoolConfig:  %+v", pools)
 	return pools, err
 }
 
