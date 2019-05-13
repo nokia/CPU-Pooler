@@ -26,7 +26,8 @@ var (
 )
 // Pool defines cpupool
 type Pool struct {
-	CPUs cpuset.CPUSet `yaml:"cpus"`
+	CPUStr 	string			`yaml:"cpus"`
+	CPUs 		cpuset.CPUSet
 }
 
 // PoolConfig defines pool configuration for a node
@@ -95,6 +96,11 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	err = yaml.Unmarshal([]byte(file), &pools)
 	if err != nil {
 		return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
+	}
+	for pool := range pools.Pools {
+		temp := pools.Pools[pool]
+		temp.CPUs = cpuset.Parse(pools.Pools[pool].CPUStr)
+		pools.Pools[pool] = temp
 	}
 	glog.Infof("LOFASZ ReadPoolConfigFile PoolConfig:  %+v", pools)
 	return pools, err
