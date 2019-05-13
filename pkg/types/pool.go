@@ -99,7 +99,10 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	}
 	for pool := range pools.Pools {
 		temp := pools.Pools[pool]
-		temp.CPUs = cpuset.Parse(pools.Pools[pool].CPUStr)
+		temp.CPUs, err = cpuset.Parse(pools.Pools[pool].CPUStr)
+		if err != nil {
+			return PoolConfig{}, errors.New("CPUs could not be parsed because:" + err.Error())
+		}
 		pools.Pools[pool] = temp
 	}
 	glog.Infof("LOFASZ ReadPoolConfigFile PoolConfig:  %+v", pools)
