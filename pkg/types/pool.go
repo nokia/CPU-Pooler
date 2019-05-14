@@ -26,8 +26,8 @@ var (
 )
 // Pool defines cpupool
 type Pool struct {
-	CPUStr 	string        `yaml:"cpus"`
-	CPUs 		cpuset.CPUSet
+	CPUStr string        `yaml:"cpus"`
+	CPUs   cpuset.CPUSet
 }
 
 // PoolConfig defines pool configuration for a node
