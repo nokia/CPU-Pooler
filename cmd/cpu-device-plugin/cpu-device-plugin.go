@@ -97,7 +97,6 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 				}
 			} else {
 				for _, cpuID := range cdm.pool.CPUs.ToSlice() {
-					glog.Infof("LOFASZ: cpuID %d", cpuID)
 					resp.Devices = append(resp.Devices, &pluginapi.Device{strconv.Itoa(cpuID), pluginapi.Healthy})
 				}
 			}
@@ -167,8 +166,7 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 }
 
 func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
-	// glog.Infof("Starting plugin for pool: %s", poolName)
-	glog.Infof("LOFASZ :Starting plugin for pool: %s cpus: %s", poolName, pool.CPUs.String())
+	glog.Infof("Starting plugin for pool: %s", poolName)
 	return &cpuDeviceManager{
 		pool:           pool,
 		socketFile:     fmt.Sprintf("cpudp_%s.sock", poolName),

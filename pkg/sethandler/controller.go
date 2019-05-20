@@ -78,11 +78,6 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 
 func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
 	//The maze wasn't meant for you either
-	log.Printf("LOFASZ OldPod ObjectMeta: %+v\n", oldPod.ObjectMeta)
-	log.Printf("LOFASZ OldPod Status: %+v\n", oldPod.Status)
-	log.Printf("LOFASZ NewPod ObjectMeta: %+v\n", newPod.ObjectMeta)
-	log.Printf("LOFASZ NewPod Status: %+v\n", newPod.Status)
-
 	if !shouldPodBeHandled(newPod) {
 		return
 	}
@@ -106,7 +101,7 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if !containerStatus.Ready {
-			log.Println("LOFASZ: ERROR - container " + containerStatus.Name + " not READY!")
+			log.Println("INFO: container " + containerStatus.Name + " not READY!")
 			return
 		}
 	}
