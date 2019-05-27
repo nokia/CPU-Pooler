@@ -5,25 +5,25 @@ metadata:
   annotations:
     nokia.k8s.io/cpus: |
       [{
-      "container": "cputestcontainer",
+      "container": "exclusivetestcontainer",
       "processes":
         [{
            "process": "/bin/sh",
            "args": ["-c","/thread_busyloop -n \"Process \"1"],
-           "cpus": 150,
-           "pool": "shared-pool"
+           "cpus": 1,
+           "pool": "exclusive-pool"
          },
          {
            "process": "/bin/sh",
            "args": ["-c", "/thread_busyloop -n \"Process \"2"],
-           "pool": "shared-pool",
-           "cpus": 10
+           "pool": "exclusive-pool",
+           "cpus": 1
          } 
       ]
       }]
 spec:
   containers:
-  - name: cputestcontainer
+  - name: sharedtestcontainer
     command: [ "/bin/bash", "-c", "--" ]
     args: [ "while true; do sleep 1; done;" ]
     image: busyloop
@@ -37,11 +37,10 @@ spec:
       limits:
         nokia.k8s.io/shared-pool: "160"
         memory: 2000Mi
-  - name: busyloop
+  - name: exclusivetestcontainer
     image: busyloop
-    command:
-    - /thread_busyloop
-    args: [ "-c","$(EXCLUSIVE_CPUS)", "-n","Process 3" ]
+    command: [ "/bin/bash", "-c", "--" ]
+    args: [ "while true; do sleep 1; done;" ]
     imagePullPolicy: IfNotPresent
     resources:
       requests:
@@ -50,3 +49,10 @@ spec:
       limits:
         memory: 2000Mi
         nokia.k8s.io/exclusive-pool: "2"
+  - name: defaulttestcontainer
+    command: [ "/bin/bash", "-c", "--" ]
+    args: [ "while true; do sleep 1; done;" ]
+    image: busyloop
+    imagePullPolicy: IfNotPresent
+    ports:
+    - containerPort: 80
