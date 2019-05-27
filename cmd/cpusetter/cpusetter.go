@@ -33,6 +33,7 @@ func main() {
 	stopChannel := make(chan struct{})
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM)
+	log.Println("CPUSetter's Controller initalized successfully! Warm-up starts now!")
 	go controller.Run(stopChannel)
 	// Wait until Controller pushes a signal on the stop channel
 	select {

@@ -78,7 +78,7 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 
 func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
 	//The maze wasn't meant for you either
-	if shouldPodBeHandled(oldPod) || !shouldPodBeHandled(newPod) {
+	if !shouldPodBeHandled(newPod) {
 		return
 	}
 	setHandler.adjustContainerSets(newPod)
@@ -99,6 +99,11 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 }
 
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if !containerStatus.Ready {
+			return
+		}
+	}
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
@@ -118,12 +123,12 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
-			return cpuset.Parse(setHandler.poolConfig.SelectPool(resNameAsString).CPUs)
+			return setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs, nil
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
 			return setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
 		}
 	}
-	return cpuset.Parse(setHandler.poolConfig.SelectPool(resourceBaseName + "/" + types.DefaultPoolID).CPUs)
+	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs, nil
 }
 
 func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
@@ -194,12 +199,13 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset cpuset.CPUSet) error {
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
+		log.Println("WARNING: for some reason cpuset to set was quite empty for container:" + containerID + ".I left it untouched.")
 		return nil
 	}
 	//According to K8s documentation CID is stored in "docker://<container_id>" format
 	trimmedCid := strings.TrimPrefix(containerID, "docker://")
 	var pathToContainerCpusetFile string
-	err := filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
+	filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
 		if strings.HasSuffix(path, trimmedCid) {
 			pathToContainerCpusetFile = path
 		}
@@ -209,7 +215,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		return errors.New("cpuset file does not exist for container:" + trimmedCid + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
-	file, err := os.OpenFile(pathToContainerCpusetFile, os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
 	}
