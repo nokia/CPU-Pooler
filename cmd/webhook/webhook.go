@@ -123,20 +123,20 @@ func validateAnnotation(poolRequests poolRequestMap, cpuAnnotation types.CPUAnno
 
 func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Container) []patch {
 	var patchItem patch
-	patchItem.Op = "add"
 
+	patchItem.Op = "replace"
 	cpuVal := `"` + strconv.Itoa(sharedCPUTime) + `m"`
-	if len(c.Resources.Limits) > 0 {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
-		patchItem.Value =
-			json.RawMessage(cpuVal)
-	} else {
-		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources"
-		patchItem.Value = json.RawMessage(`{ "limits": { "cpu":` + cpuVal + ` } }`)
-	}
+	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/limits/cpu"
+	patchItem.Value = json.RawMessage(cpuVal)
 	patchList = append(patchList, patchItem)
-	return patchList
 
+	patchItem.Op = "replace"
+	cpuVal = `"0m"`
+	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/requests/cpu"
+	patchItem.Value = 	json.RawMessage(cpuVal)
+	patchList = append(patchList, patchItem)
+
+	return patchList
 }
 
 func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
