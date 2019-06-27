@@ -48,6 +48,18 @@ type SetHandler struct {
 	k8sClient  kubernetes.Interface
 }
 
+//SetHandler returns the SetHandler data set
+func (setHandler SetHandler) SetHandler() SetHandler {
+	return setHandler
+}
+
+//SetSetHandler a setter for SetHandler
+func (setHandler *SetHandler) SetSetHandler(poolconf types.PoolConfig, cpusetRoot string, k8sClient kubernetes.Interface) {
+	setHandler.poolConfig = poolconf
+	setHandler.cpusetRoot = cpusetRoot
+	setHandler.k8sClient = k8sClient
+}
+
 //New creates a new SetHandler object
 //Can return error if in-cluster K8s API server client could not be initialized
 func New(kubeConf string, poolConfig types.PoolConfig, cpusetRoot string) (*SetHandler, error) {
@@ -73,16 +85,17 @@ func (setHandler *SetHandler) CreateController() cache.Controller {
 	kubeInformerFactory := informers.NewSharedInformerFactory(setHandler.k8sClient, time.Second*30)
 	controller := kubeInformerFactory.Core().V1().Pods().Informer()
 	controller.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { setHandler.podAdded(*(reflect.ValueOf(obj).Interface().(*v1.Pod))) },
+		AddFunc:    func(obj interface{}) { setHandler.PodAdded(*(reflect.ValueOf(obj).Interface().(*v1.Pod))) },
 		DeleteFunc: func(obj interface{}) {},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			setHandler.podChanged(*(reflect.ValueOf(oldObj).Interface().(*v1.Pod)), *(reflect.ValueOf(newObj).Interface().(*v1.Pod)))
+			setHandler.PodChanged(*(reflect.ValueOf(oldObj).Interface().(*v1.Pod)), *(reflect.ValueOf(newObj).Interface().(*v1.Pod)))
 		},
 	})
 	return controller
 }
 
-func (setHandler *SetHandler) podAdded(pod v1.Pod) {
+//PodAdded handles ADD operations
+func (setHandler *SetHandler) PodAdded(pod v1.Pod) {
 	//The maze wasn't meant for you
 	if !shouldPodBeHandled(pod) {
 		return
@@ -90,7 +103,8 @@ func (setHandler *SetHandler) podAdded(pod v1.Pod) {
 	setHandler.adjustContainerSets(pod)
 }
 
-func (setHandler *SetHandler) podChanged(oldPod, newPod v1.Pod) {
+//PodChanged handles UPDATE operations
+func (setHandler *SetHandler) PodChanged(oldPod, newPod v1.Pod) {
 	//The maze wasn't meant for you either
 	if !shouldPodBeHandled(newPod) {
 		return
