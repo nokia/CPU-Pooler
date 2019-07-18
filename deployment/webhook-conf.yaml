@@ -8,7 +8,7 @@ webhooks:
     clientConfig:
       service:
         name: cpu-dev-pod-mutator-svc
-        namespace: default
+        namespace: kube-system
         path: "/mutating-pods"
       caBundle: "${CA_BUNDLE}"
     rules:

@@ -3,7 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: cpu-dev-pod-mutator-svc
-  namespace: default
+  namespace: kube-system
   labels:
     app: cpu-dev-pod-mutator 
 spec:
@@ -17,7 +17,7 @@ apiVersion: apps/v1beta1
 kind: Deployment
 metadata:
   name: cpu-dev-pod-mutator-deployment
-  namespace: default
+  namespace: kube-system
   labels:
     app: cpu-dev-pod-mutator
 spec:

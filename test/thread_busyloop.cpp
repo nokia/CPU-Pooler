@@ -7,14 +7,13 @@
 
 std::string process_name;
 
-void thread_func (void)
+void printAffinity()
 {
-
       cpu_set_t mask;
       CPU_ZERO(&mask);
       int ret = pthread_getaffinity_np(pthread_self(), sizeof(cpu_set_t), &mask);
       if (ret != 0) {
-              printf("Error getting thread affinity %d",ret);
+              std::cout << "Error getting thread affinity" << ret << std::endl;
       }
       int cpu;
       std::stringstream output;
@@ -26,13 +25,19 @@ void thread_func (void)
       output << std::endl;
       std::cout << output.str();
       fflush(stdout);
-      while(true);
+}
+
+void thread_func (void)
+{
+        printAffinity();
+        while(true);
 }
 
 int read_cores(int cores[],char *arg)
 {
         int i = 0;
         arg = strtok(arg,",");
+
         while (arg != NULL) {
                 cores[i++]=atoi(arg);
                 arg = strtok(NULL,",");
@@ -42,25 +47,47 @@ int read_cores(int cores[],char *arg)
 
 int main(int argc, char* argv[])
 {
-        int opt,cores[10],num_cores=0,i;
+    std::cout << "Arguments count: " << argc  << "   arguments:" << "\n";
 
-        while ((opt = getopt (argc, argv, "cn::")) != -1) {
+    for (int i = 0; i < argc; ++i)
+            std::cout << "    " << argv[i] << "\n";
+        int opt,cores[10],num_cores=0,i,shared_cores[10],num_shared_cores=0;
+
+        while ((opt = getopt (argc, argv, "c:s:n:")) != -1) {
                 switch (opt)
                 {
                 case 'c': {
-                        num_cores = read_cores(cores,argv[optind]);
+                        num_cores = read_cores(cores,optarg);
                         break;
                 }
                 case 'n': {
-                        process_name = static_cast<char *>(argv[optind]);
+                        process_name = static_cast<char *>(optarg);
+                        break;
+                }
+                case 's': {
+                        num_shared_cores = read_cores(shared_cores,optarg);
                         break;
                 }
                 default:
-                        std::cout << "Illegal options " << std::endl;
+                        std::cout << "Illegal option: " << char(opt) << std::endl;
                         return(1);
                 }
         }
         std::vector<std::thread> threads;
+        if (num_shared_cores) {
+                int ret;
+                cpu_set_t  mask;
+                CPU_ZERO(&mask);
+                for (i=0; i<num_shared_cores; i++)
+                {
+                        CPU_SET(shared_cores[i],&mask);
+                }
+                ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &mask);
+                if (ret != 0) {
+                        std::cerr << "Err::pthread_setaffinity_np(): " << ret << ":" <<
+                                num_shared_cores << ":" << shared_cores[0] << std::endl;
+                }
+        }
         if (num_cores) {
                 for (i=0; i<num_cores; i++)
                 {
@@ -80,5 +107,7 @@ int main(int argc, char* argv[])
                 threads.push_back(std::thread{thread_func});
                 std::this_thread::sleep_for (std::chrono::seconds(1));
         }
+        std::cout << "Main thread :";
+        printAffinity();
         for (auto &t : threads) t.join();
 }
