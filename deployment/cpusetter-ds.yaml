@@ -50,6 +50,7 @@ spec:
     matchLabels:
       cpu-pooler: cpu-setter
   template:
+    metadata:
       labels:
         cpu-pooler: cpu-setter
     spec:

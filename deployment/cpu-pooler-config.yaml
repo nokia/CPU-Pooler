@@ -2,6 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cpu-pooler-configmap
+  namespace: kube-system
 data:
   poolconfig-controller.yaml: |
     pools: 

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: cpu-device-plugin
-  namespace: default
+  namespace: kube-system
 spec:
   selector:
     matchLabels:

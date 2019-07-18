@@ -2,7 +2,7 @@
 
 service="cpu-dev-pod-mutator-svc"
 secret="cpu-dev-webhook-secret"
-namespace="default"
+namespace="kube-system"
 
 # Remove existing csr
 kubectl delete csr ${service}.${namespace} &>/dev/null || true
@@ -37,7 +37,7 @@ if [ ! -s server.crt ]; then
     exit
 fi
 
-kubectl create secret generic ${secret} \
+kubectl create secret generic ${secret} -n ${namespace}\
         --from-file=key.pem=server-key.pem \
         --from-file=cert.pem=server.crt
 
