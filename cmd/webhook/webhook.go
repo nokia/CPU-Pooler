@@ -6,18 +6,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/pkg/types"
-	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 var scheme = runtime.NewScheme()
@@ -25,8 +26,9 @@ var codecs = serializer.NewCodecFactory(scheme)
 var resourceBaseName = "nokia.k8s.io"
 
 type containerPoolRequests struct {
-	sharedCPURequests int
-	pools             map[string]int
+	sharedCPURequests    int
+	exclusiveCPURequests bool
+	pools                map[string]int
 }
 type poolRequestMap map[string]containerPoolRequests
 
@@ -60,7 +62,6 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 		if !exists {
 			cPoolRequests.pools = make(map[string]int)
 		}
-		var sharedFound, exclusiveFound bool
 		for key, value := range c.Resources.Limits {
 			if strings.HasPrefix(string(key), resourceBaseName) {
 
@@ -71,18 +72,14 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 				}
 				if strings.HasPrefix(string(key), resourceBaseName+"/shared") {
 					cPoolRequests.sharedCPURequests += val
-					sharedFound = true
 				}
 				if strings.HasPrefix(string(key), resourceBaseName+"/exclusive") {
-					exclusiveFound = true
+					cPoolRequests.exclusiveCPURequests = true
 				}
 				poolName := strings.TrimPrefix(string(key), resourceBaseName+"/")
 				cPoolRequests.pools[poolName] = val
 				poolRequests[c.Name] = cPoolRequests
 			}
-		}
-		if sharedFound && exclusiveFound {
-			return poolRequestMap{}, fmt.Errorf("Only one type of pool is allowed for a container")
 		}
 	}
 	return poolRequests, nil
@@ -133,7 +130,7 @@ func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Contai
 	patchItem.Op = "replace"
 	cpuVal = `"0m"`
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/requests/cpu"
-	patchItem.Value = 	json.RawMessage(cpuVal)
+	patchItem.Value = json.RawMessage(cpuVal)
 	patchList = append(patchList, patchItem)
 
 	return patchList
@@ -249,7 +246,9 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	// Patch container if needed.
 	for i, c := range pod.Spec.Containers {
-		if poolRequests[c.Name].sharedCPURequests > 0 {
+		// Set CPU limit if shared CPU were requested and exclusive CPUs were not requested
+		if poolRequests[c.Name].sharedCPURequests > 0 &&
+			!poolRequests[c.Name].exclusiveCPURequests {
 			patchList = patchCPULimit(poolRequests[c.Name].sharedCPURequests,
 				patchList, i, &c)
 		}
