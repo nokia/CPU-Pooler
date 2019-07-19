@@ -3,7 +3,14 @@ package sethandler
 import (
 	"encoding/json"
 	"errors"
+	"log"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
+	"strings"
+	"time"
+
 	"github.com/intel/multus-cni/checkpoint"
 	multusTypes "github.com/intel/multus-cni/types"
 	"github.com/nokia/CPU-Pooler/pkg/types"
@@ -13,12 +20,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
-	"log"
-	"os"
-	"path/filepath"
-	"reflect"
-	"strings"
-	"time"
 )
 
 var (
@@ -120,14 +121,25 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 }
 
 func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
+	var (
+		sharedCPUSet, exclusiveCPUSet cpuset.CPUSet
+		err                           error
+	)
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
-			return setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs, nil
+			sharedCPUSet = setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
-			return setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
+			exclusiveCPUSet, err = setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
+			if err != nil {
+				return cpuset.CPUSet{}, err
+			}
 		}
 	}
+	if !sharedCPUSet.IsEmpty() || !exclusiveCPUSet.IsEmpty() {
+		return sharedCPUSet.Union(exclusiveCPUSet), nil
+	}
+
 	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs, nil
 }
 
@@ -153,7 +165,7 @@ func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.
 	var doesSetContainPinnerCore bool
 	setBuilder := cpuset.NewBuilder()
 	for _, deviceID := range exclusiveCpus.DeviceIDs {
-		deviceIDasInt,err := strconv.Atoi(deviceID)
+		deviceIDasInt, err := strconv.Atoi(deviceID)
 		if err != nil {
 			return cpuset.CPUSet{}, err
 		}
@@ -215,14 +227,14 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		return errors.New("cpuset file does not exist for container:" + trimmedCid + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
-  //Find child cpuset if it exists (kube-proxy)
+	//Find child cpuset if it exists (kube-proxy)
 	filepath.Walk(pathToContainerCpusetFile, func(path string, f os.FileInfo, err error) error {
 		if f.IsDir() {
 			pathToContainerCpusetFile = path
 		}
 		return nil
 	})
-	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
 	}
