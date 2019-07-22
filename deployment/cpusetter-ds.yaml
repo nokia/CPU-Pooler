@@ -38,19 +38,6 @@ subjects:
   name: cpu-setter
   namespace: kube-system
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: caas:cpu-setter-psp
-subjects:
-- kind: ServiceAccount
-  name: cpu-setter
-  namespace: kube-system
-roleRef:
-  kind: ClusterRole
-  name: caas:infra-psp
-  apiGroup: rbac.authorization.k8s.io
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -71,11 +58,19 @@ spec:
         image: cpusetter
         imagePullPolicy: IfNotPresent
         ##--cpusetroot needs to be set to the root of the cgroupfs hierarchy used by Kubelet for workloads
-        command: [ "/cpu-setter", "--poolconfigs=/etc/cpu-pooler", "--cpusetroot=/sys/fs/cgroup/cpuset/kubepods/" ]
+        command: [ "/cpu-setter", "--poolconfigs=/etc/cpu-pooler", "--cpusetroot=/sys/fs/cgroup/cpuset/kubepods" ]
+        resources:
+          requests:
+            cpu: "10m"
         volumeMounts:
+         - name: time-mount
+           mountPath: /etc/localtime
+           readOnly: true
          - mountPath: /etc/cpu-pooler
            name: cpu-pooler-config
-         - mountPath: /var/lib/kubelet/device-plugins/kubelet_internal_checkpoint
+         - mountPath: /sys/fs/cgroup/cpuset/kubepods/
+           name: kubepods
+         - mountPath: /var/lib/kubelet/device-plugins/
            name: checkpointfile
            readOnly: true
         env:
@@ -83,11 +78,19 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
       volumes:
+      - name: time-mount
+        hostPath:
+          path: /etc/localtime
       ## CPUSetter parses the Kubelet checkpoint file for Device allocations
       - name: checkpointfile
         hostPath:
-         path: /var/lib/kubelet/device-plugins/kubelet_internal_checkpoint
+         path: /var/lib/kubelet/device-plugins/
+      - name: kubepods
+        hostPath:
+         path: /sys/fs/cgroup/cpuset/kubepods/
       ## The pool configuration files need to be mounted here
       - name: cpu-pooler-config
         configMap:
