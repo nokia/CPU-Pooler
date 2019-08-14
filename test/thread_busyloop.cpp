@@ -73,7 +73,6 @@ int main(int argc, char* argv[])
                         return(1);
                 }
         }
-//        std::this_thread::sleep_for (std::chrono::seconds(5));
         std::vector<std::thread> threads;
         if (num_shared_cores) {
                 int ret;
