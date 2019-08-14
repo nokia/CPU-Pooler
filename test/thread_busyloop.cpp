@@ -17,7 +17,7 @@ void printAffinity()
       }
       int cpu;
       std::stringstream output;
-      output << process_name << " thread(s) running in cpu(s) ";
+      output << " thread(s) running in cpu(s) ";
       for (cpu=0; cpu < CPU_SETSIZE;cpu++) {
               if (CPU_ISSET(cpu,&mask)) output << cpu << ",";
       }
@@ -47,17 +47,17 @@ int read_cores(int cores[],char *arg)
 
 int main(int argc, char* argv[])
 {
-    std::cout << "Arguments count: " << argc  << "   arguments:" << "\n";
-
-    for (int i = 0; i < argc; ++i)
-            std::cout << "    " << argv[i] << "\n";
-        int opt,cores[10],num_cores=0,i,shared_cores[10],num_shared_cores=0;
+        for (int i=0; i<argc; i++) {
+                std::cout << argv[i] << " ";
+        }
+        std::cout << std::endl;
+        int opt,exclusive_cores[10],num_excl_cores=0,i,shared_cores[10],num_shared_cores=0;
 
         while ((opt = getopt (argc, argv, "c:s:n:")) != -1) {
                 switch (opt)
                 {
                 case 'c': {
-                        num_cores = read_cores(cores,optarg);
+                        num_excl_cores = read_cores(exclusive_cores,optarg);
                         break;
                 }
                 case 'n': {
@@ -73,6 +73,7 @@ int main(int argc, char* argv[])
                         return(1);
                 }
         }
+//        std::this_thread::sleep_for (std::chrono::seconds(5));
         std::vector<std::thread> threads;
         if (num_shared_cores) {
                 int ret;
@@ -88,13 +89,13 @@ int main(int argc, char* argv[])
                                 num_shared_cores << ":" << shared_cores[0] << std::endl;
                 }
         }
-        if (num_cores) {
-                for (i=0; i<num_cores; i++)
+        if (num_excl_cores) {
+                for (i=0; i<num_excl_cores; i++)
                 {
                         int ret;
                         cpu_set_t  mask;
                         CPU_ZERO(&mask);
-                        CPU_SET(cores[i],&mask);
+                        CPU_SET(exclusive_cores[i],&mask);
                         std::thread thr{thread_func};
                         ret = pthread_setaffinity_np(thr.native_handle(), sizeof(cpu_set_t), &mask);
                         if (ret != 0) {
@@ -107,7 +108,9 @@ int main(int argc, char* argv[])
                 threads.push_back(std::thread{thread_func});
                 std::this_thread::sleep_for (std::chrono::seconds(1));
         }
+        std::this_thread::sleep_for (std::chrono::milliseconds(1));
         std::cout << "Main thread :";
         printAffinity();
+        std::cout << std::endl;
         for (auto &t : threads) t.join();
 }

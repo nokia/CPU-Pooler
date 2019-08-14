@@ -2,22 +2,11 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: cpupod-exclusive
-  annotations:
-    nokia.k8s.io/cpus: |
-      [{
-      "container": "cputest-exclusive",
-      "processes":
-        [{
-           "process": "/bin/sh",
-           "args": ["-c","/thread_busyloop -n \"Process \"cputest-exclusive"],
-           "cpus": 3,
-           "pool": "exclusive-pool"
-         } 
-      ]
-      }]
 spec:
   containers:
   - name: cputest-exclusive
+    command: [ /thread_busyloop ]
+    args: ["-c","$(EXCLUSIVE_CPUS)"]
     image: busyloop
     imagePullPolicy: IfNotPresent
     ports:
@@ -25,7 +14,7 @@ spec:
     resources:
       requests:
         memory: 2000Mi
-        nokia.k8s.io/exclusive-pool: "3"
+        nokia.k8s.io/exclusive-pool: "2"
       limits:
         memory: 2000Mi
-        nokia.k8s.io/exclusive-pool: "3"
+        nokia.k8s.io/exclusive-pool: "2"

@@ -7,7 +7,7 @@ spec:
   - name: cputest-exclusive
     image: busyloop
     command: [ /thread_busyloop ]
-    args: ["-c","$(EXCLUSIVE_CPUS)","-s","$(SHARED_CPUS)","-n \"Process cputest-exclusive\""]
+    args: ["-c","$(EXCLUSIVE_CPUS)","-s","$(SHARED_CPUS)","-n 'Process cputest-exclusive'"]
     imagePullPolicy: IfNotPresent
     ports:
     - containerPort: 80

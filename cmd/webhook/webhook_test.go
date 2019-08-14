@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"io/ioutil"
-	"k8s.io/api/admission/v1beta1"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"k8s.io/api/admission/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func createAdmReviewReq(t *testing.T, containers []corev1.Container) []byte {
@@ -243,10 +244,26 @@ func TestMutateAnnotationPoolMissingInResource(t *testing.T) {
 
 func TestMutateBothPoolTypesRequestedInResource(t *testing.T) {
 
+	expectedPatches := []patch{
+		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
+			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
+		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
+			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
+		patch{Op: "add", Path: "/spec/containers/0/env",
+			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
+		patch{Op: "add", Path: "/spec/containers/0/command",
+			Value: json.RawMessage(`[ "/opt/bin/process-starter" ]`)},
+		patch{Op: "add", Path: "/spec/containers/0/args",
+			Value: json.RawMessage(`[ "/bin/bash","-c","--","while true; do sleep 1; done;" ]`)},
+		patch{Op: "add", Path: "/spec/volumes/-",
+			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
+		patch{Op: "add", Path: "/spec/volumes/-",
+			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
+	}
 	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-both-pool-types-req.json")
 	if err != nil {
 		t.Errorf("Could not read pod spec")
 	}
 
-	handleAndChekAdmReview(t, admReviewReq, nil, nil)
+	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }

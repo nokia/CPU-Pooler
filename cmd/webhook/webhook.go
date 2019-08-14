@@ -170,6 +170,15 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
 
+	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/args"
+	args := `[ "` + strings.Join(c.Command, "\",\"") + `" `
+	if len(c.Args) > 0 {
+		args += `,"` + strings.Join(c.Args, "\",\"") + `"`
+	}
+	args += `]`
+	patchItem.Value = json.RawMessage(args)
+	patchList = append(patchList, patchItem)
+
 	return patchList, nil
 }
 
@@ -213,7 +222,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		glog.Error(err)
 		return toAdmissionResponse(err)
 	}
-
 	reviewResponse := v1beta1.AdmissionResponse{}
 
 	annotationName := annotationNameFromConfig()
@@ -252,7 +260,16 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			patchList = patchCPULimit(poolRequests[c.Name].sharedCPURequests,
 				patchList, i, &c)
 		}
-		if isPinningPatchNeeded(c.Name, containersToPatch) {
+		// If pod annotation has entry for this container or
+		// container asks for exclusive cpus, we add patches to enable pinning.
+		// The patches enable process in container to be started with cpu pooler's 'process starter'
+		// The cpusetter sets cpuset for the container and that needs to be completed
+		// before application container is started. If cpuset is set after the application
+		// has started, the cpu affinity setting by application will be overwritten by the cpuset.
+		// The process starter will wait for cpusetter to finish it's job for this container
+		// and starts the application process after that.
+		if isPinningPatchNeeded(c.Name, containersToPatch) ||
+			poolRequests[c.Name].exclusiveCPURequests {
 			patchList, err = patchContainerForPinning(cpuAnnotation, patchList, i, &c)
 			if err != nil {
 				return toAdmissionResponse(err)
