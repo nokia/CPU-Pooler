@@ -170,14 +170,16 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
 
-	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/args"
-	args := `[ "` + strings.Join(c.Command, "\",\"") + `" `
-	if len(c.Args) > 0 {
-		args += `,"` + strings.Join(c.Args, "\",\"") + `"`
+	if len(c.Command) > 0 {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/args"
+		args := `[ "` + strings.Join(c.Command, "\",\"") + `" `
+		if len(c.Args) > 0 {
+			args += `,"` + strings.Join(c.Args, "\",\"") + `"`
+		}
+		args += `]`
+		patchItem.Value = json.RawMessage(args)
+		patchList = append(patchList, patchItem)
 	}
-	args += `]`
-	patchItem.Value = json.RawMessage(args)
-	patchList = append(patchList, patchItem)
 
 	return patchList, nil
 }
@@ -268,8 +270,15 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		// has started, the cpu affinity setting by application will be overwritten by the cpuset.
 		// The process starter will wait for cpusetter to finish it's job for this container
 		// and starts the application process after that.
-		if isPinningPatchNeeded(c.Name, containersToPatch) ||
-			poolRequests[c.Name].exclusiveCPURequests {
+		pinningPatchNeeded := isPinningPatchNeeded(c.Name, containersToPatch)
+		if poolRequests[c.Name].exclusiveCPURequests {
+			if len(c.Command) == 0 && !pinningPatchNeeded {
+				glog.Warningf("Container %s asked exclusive cpus but command not given. CPU affinity settings possibly lost for container", c.Name)
+			} else {
+				pinningPatchNeeded = true
+			}
+		}
+		if pinningPatchNeeded {
 			patchList, err = patchContainerForPinning(cpuAnnotation, patchList, i, &c)
 			if err != nil {
 				return toAdmissionResponse(err)
