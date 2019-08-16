@@ -40,6 +40,7 @@ var validationErrStr = map[int]string{
 	validationErrNoCpus:          "'cpus' field is mandatory in annotation",
 }
 
+// NewCPUAnnotation returns a new CPUAnnotation
 func NewCPUAnnotation() CPUAnnotation {
 	c := make(CPUAnnotation)
 	return c
