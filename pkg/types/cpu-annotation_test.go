@@ -1,8 +1,9 @@
 package types
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var cpuAnnotation CPUAnnotation
@@ -23,9 +24,7 @@ func init() {
 func TestGetContainerPools(t *testing.T) {
 	pools := cpuAnnotation.ContainerPools("Container1")
 
-	if !reflect.DeepEqual(pools, []string{"shared-pool1", "exclusive-pool2"}) {
-		t.Errorf("%v", pools)
-	}
+	assert.ElementsMatch(t, []string{"shared-pool1", "exclusive-pool2"}, pools)
 }
 
 func TestGetContainerCpuRequest(t *testing.T) {
@@ -36,11 +35,9 @@ func TestGetContainerCpuRequest(t *testing.T) {
 }
 
 func TestGetContainers(t *testing.T) {
-
-	if !reflect.DeepEqual([]string{"Container1", "Container2"}, cpuAnnotation.Containers()) {
-		t.Errorf("Get containers failed %v", cpuAnnotation.Containers())
-	}
+	assert.ElementsMatch(t, []string{"Container1", "Container2"}, cpuAnnotation.Containers())
 }
+
 func TestContainerSharedCPUTime(t *testing.T) {
 	if 550 != cpuAnnotation.ContainerSharedCPUTime("Container2") {
 		t.Errorf("CPU request does not match %v", cpuAnnotation.ContainerSharedCPUTime("Container1"))
@@ -52,9 +49,7 @@ func TestContainerDecodeAnnotation(t *testing.T) {
 	ca := CPUAnnotation{}
 	ca.Decode([]byte(podannotation))
 	pools := ca.ContainerPools("cputestcontainer")
-	if !reflect.DeepEqual(pools, []string{"shared-pool1", "exclusive-pool2"}) {
-		t.Errorf("Failed to get pool %v", pools)
-	}
+	assert.ElementsMatch(t, []string{"shared-pool1", "exclusive-pool2"}, pools)
 
 }
 func TestContainerDecodeAnnotationUnmarshalFail(t *testing.T) {
