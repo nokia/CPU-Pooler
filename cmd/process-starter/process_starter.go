@@ -3,20 +3,23 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"github.com/nokia/CPU-Pooler/pkg/types"
-	"golang.org/x/sys/unix"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
+
+	"github.com/nokia/CPU-Pooler/pkg/types"
+	"golang.org/x/sys/unix"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 func readCPUAnnotation() ([]types.Container, error) {
 	var s string
 	var containers []types.Container
-	var str string
+	var ann string
 	file, err := os.Open("/etc/podinfo/annotations")
 	if err != nil {
 		fmt.Printf("File open error %v", err)
@@ -25,19 +28,21 @@ func readCPUAnnotation() ([]types.Container, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		str = scanner.Text()
+		str := scanner.Text()
 		if strings.Contains(str, "nokia.k8s.io/cpus=") {
-			str = strings.Replace(str, "nokia.k8s.io/cpus=", "", 1)
+			ann = strings.Replace(str, "nokia.k8s.io/cpus=", "", 1)
 			break
 		}
 	}
-
+	if len(ann) == 0 {
+		return nil, nil
+	}
 	if err = scanner.Err(); err != nil {
 		fmt.Printf("Scanner error %v", err)
 		return nil, err
 	}
 
-	err = json.Unmarshal([]byte(str), &s)
+	err = json.Unmarshal([]byte(ann), &s)
 	if err != nil {
 		fmt.Printf("Annotation unmarshall error %v", err)
 		return nil, err
@@ -48,12 +53,6 @@ func readCPUAnnotation() ([]types.Container, error) {
 		return nil, err
 	}
 	return containers, nil
-}
-
-func waitCommand(cmd *exec.Cmd, cch chan int, index int) {
-	err := cmd.Wait()
-	fmt.Printf("Process ended cmd %v, err %v\n", cmd.Path, err)
-	cch <- index
 }
 
 func setAffinity(nbrCPUs int, cpuList []int) []int {
@@ -84,66 +83,89 @@ func cpuListStrToIntSlice(cpuString string) (cpuList []int) {
 	return cpuList
 }
 
+func pollCPUSetCompletion(exclusiveCPUs []int, sharedCPUs []int) {
+	var cs cpuset.CPUSet
+	expCpus := cpuset.NewBuilder()
+	expCpus.Add(exclusiveCPUs...)
+	expCpus.Add(sharedCPUs...)
+
+	// Wait max 10 seconds for cpusetter to set the cgroup cpuset
+	for i := 0; i < 10; i++ {
+		file, err := os.Open("/sys/fs/cgroup/cpuset/cpuset.cpus")
+		if err != nil {
+			fmt.Printf("Cannot open cgroup cpuset %v", err)
+			os.Exit(1)
+		}
+		scanner := bufio.NewScanner(file)
+		scanner.Scan()
+		cgCPUSet := scanner.Text()
+		cs, err = cpuset.Parse(cgCPUSet)
+		if err != nil {
+			fmt.Printf("Cannot parse cgroup cpuset %v:%v", cgCPUSet, err)
+
+		}
+		if expCpus.Result().Equals(cs) {
+			return
+		}
+		file.Close()
+		time.Sleep(1 * time.Second)
+	}
+	fmt.Printf("Cgroup cpuset (%s) does not match to expected cpuset (%s)\n",
+		cs.String(), expCpus.Result().String())
+	os.Exit(1)
+}
+
 func main() {
-	flag.Parse()
 	containers, err := readCPUAnnotation()
 	if err != nil {
 		panic("Cannot read pod cpu annotation")
 	}
-	var cmds []*exec.Cmd
-	completionChannel := make(chan int, 10)
 	myContainerName := os.Getenv("CONTAINER_NAME")
 	exclCPUs := cpuListStrToIntSlice(os.Getenv("EXCLUSIVE_CPUS"))
+	sharedCPUs := cpuListStrToIntSlice(os.Getenv("SHARED_CPUS"))
 	fmt.Printf("Exclusive cpu list %v\n", exclCPUs)
+	fmt.Printf("Shared cpu list %v\n", sharedCPUs)
 
 	if myContainerName == "" {
 		panic("CONTAINER_NAME envrionment variable not found")
 	}
+	pollCPUSetCompletion(exclCPUs, sharedCPUs)
 	for _, container := range containers {
 		if container.Name != myContainerName {
 			continue
 		}
-		fmt.Printf("Container name %s\n", container.Name)
+		fmt.Printf("Start processes defined in annotation\n")
+		// Last process replaces this process, other processes are started
+		// as new processes in background
 		for index, process := range container.Processes {
-			fmt.Printf("  Process name %v\n", process)
+			fmt.Printf("  Process name %v\n", process.ProcName)
 			fmt.Printf("    Args: %v ", process.Args)
 			fmt.Printf("\n")
-			cmd := exec.Command(process.ProcName, process.Args...)
 			if strings.HasPrefix(process.PoolName, "exclusive") {
 				exclCPUs = setAffinity(process.CPUs, exclCPUs)
 				if nil == exclCPUs {
-					fmt.Printf("Failed to set affinity")
+					fmt.Printf("Failed to set affinity\n")
 					os.Exit(1)
 				}
+			} else {
+				setAffinity(len(sharedCPUs), sharedCPUs)
 			}
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			err := cmd.Start()
-			if err != nil {
-				fmt.Printf("Failed starting %v", cmd)
-			}
-			cmds = append(cmds, cmd)
-			go waitCommand(cmd, completionChannel, index)
-		}
-	}
-	if len(cmds) == 0 {
-		fmt.Printf("No processes to be started found from annotations\n")
-		os.Exit(1)
-	}
-	// Get default pool from env variable
-	cpuSet := new(unix.CPUSet)
-	cpuSet.Set(0)
-	unix.SchedSetaffinity(0, cpuSet)
-	select {
-	case cmdIndex := <-completionChannel:
-		fmt.Printf("Command index %d ended\n", cmdIndex)
-		for index := range cmds {
-			if index != cmdIndex {
-				cmds[index].Process.Kill()
-				fmt.Printf("Killing command index %d\n", index)
+			if index == len(container.Processes)-1 {
+				args := []string{}
+				args = append(args, process.ProcName)
+				args = append(args, process.Args...)
+				syscall.Exec(process.ProcName, args, os.Environ())
+			} else {
+				cmd := exec.Command(process.ProcName, process.Args...)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				err := cmd.Start()
+				if err != nil {
+					fmt.Printf("Failed starting %v\n", cmd)
+				}
 			}
 		}
-		os.Exit(1)
-
 	}
+	fmt.Printf("No processes in pod annotation, start process from pod spec command\n")
+	syscall.Exec(os.Args[1], os.Args[1:], os.Environ())
 }

@@ -21,10 +21,10 @@ The CPU-Pooler project contains 4 core components:
 - process starter binary capable of pinning specific processes to specific cores even within the confines of a container
 - a mutating admission webhook for the Kubernetes core Pod API, validating and mutating CPU pool specific user requests 
 
-The Device Plugin's job is to advertise the pools as consumable resources to Kubelet through the existing DPAPI. The cpus allocated by the plugin are communicated to the container as environment variables containing a list of physical core IDs.
-By default the application can set its processes CPU affinity according to the given cpu list, or can leave it up to the standard Linux Completely Fair Scheduler.
+The Device Plugin's job is to advertise the pools as consumable resources to Kubelet through the existing DPAPI. The CPUs allocated by the plugin are communicated to the container as environment variables containing a list of physical core IDs.
+By default the application can set its processes CPU affinity according to the given CPU list, or can leave it up to the standard Linux Completely Fair Scheduler.
 
-For the edge case where application does not implement functionality to set the cpu affinity of its processes, the CPU pooler provides mechanism to set it on behalf of the application.
+For the edge case where application does not implement functionality to set the CPU affinity of its processes, the CPU pooler provides mechanism to set it on behalf of the application.
 This opt-in functionality is enabled by configuring the application process information to the annotation field of its Pod spec.
 A mutating admission controller webhook is provided with the project to mutate the Pod's specification according to the needs of the starter binary (mounts, environment variables etc.).
 The process-starter binary has to be installed to host file system in `/opt/bin` directory.
@@ -33,6 +33,24 @@ Lastly, the CPUSetter sub-component implements total physical separation of cont
 CPUSetter first calculates what is the appropriate cpuset for the container: the allocated CPUs in case of exclusive, the shared pool in case of shared, or the default in case the container did not explicitly ask for any pooled resources.
 CPUSetter then provisions the calculated set into the relevant parametet of the container's cgroupfs filesystem (cpuset.cpus).
 As CPUSetter is triggered by all Pods on all Nodes, we can be sure no containers can ever -even accidentally- access CPU resources not meant for them!  
+
+## Using the allocated CPUs
+
+For running the application in allocated CPUs or pinning application process / thread(s) to allocated CPUs , there are following options available:
+
+**cpuset**
+
+Cpuset basically just restricts container to run on certain CPU(s) so relying on cpuset isolation is suitable for plain shared CPU allocation. This option is also suitable for allocating  one exclusive CPU for a single threaded application.
+
+**pod annotation**
+
+If container has multiple processes and multiple exclusive CPUs are allocated or different pool types are used, pod annotation can be used to configure processes and CPU amounts for them. In this case CPU Pooler takes care of pinning the processes to allocated CPUs. This is suitable for single threaded processes running on exclusive CPUs. The container can also have process(es) running on shared CPUs
+
+**use environment variables for pinning**
+
+CPU Pooler sets allocated exclusive CPUs to environment variable `EXCLUSIVE_CPUS` and allocated shared CPUs to `SHARED_CPUS` environment variable. They contain CPU(s) as comma separated list. These variables can be used by the application to read the allocated CPU(s) and do pinning of threads / processes to the CPU(s). This option needs to be used e.g for multithreaded processess with exlusive CPUs.
+
+In this option there is a synchronization problem in CPUsetter setting the cpuset and application doing the pinning (by setting the CPU affinity); if application does the pinning immediately after the startup, it is highly likely that CPUsetter has not finished it's job and cpuset is set after the CPU affinity by the application process. In this case the affinity setting is lost. This problem is solved by the `process-starter`, which waits for finishing of cpuset configuration and starts the container process only after that. The `process-starter` can be used only if the `command` property is configured in container's pod manifest. If the `command` is not configured, the `process-starer` does not know which process to start in the container. If `command` cannot be configured, application must make sure that cpuset is configured (=matches to union of SHARED_CPUS and EXCLUSIVE_CPUS) before setting the CPU affinity.
 
 ## Configuration
 
@@ -64,7 +82,7 @@ data:
       nodeSelector:
         <key> : <value>
 ```
-The cpu-pooler.yaml file must exist in the data section.
+The poolconfig-<name>.yaml file must exist in the data section.
 The cpu pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
 Pool name from the config will be the resource in the fully qualified resource name (`nokia.k8s.io/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive cpu pool or 'shared' for shared cpu pool.
 A CPU pool not having either of these special prefixes is considered as the cluster-wide 'default' CPU pool, and as such, CPU cores belonging to this pool will not be advertised to the Device Manager as schedulable resources.
@@ -142,7 +160,6 @@ An example is provided in cpu-test.yaml pod manifest in the deployment folder.
 Following restrictions apply when allocating cpu from pools and configuring pools:
 
 * There can be only one shared pool in the node
-* Containter can ask cpus from one type of pool only (shared, exclusive, or default)
 * Resources belonging to the default pool are not advertised. The default pool definition is only used by the CPUSetter component
 
 ## Build

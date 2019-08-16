@@ -3,8 +3,9 @@ package types
 import (
 	"encoding/json"
 	"errors"
-	"github.com/golang/glog"
 	"strings"
+
+	"github.com/golang/glog"
 )
 
 // Process defines process information in pod annotation
@@ -23,7 +24,7 @@ type Container struct {
 }
 
 // CPUAnnotation defines the pod cpu annotation structure
-type CPUAnnotation []Container
+type CPUAnnotation map[string]Container
 
 const (
 	validationErrNoContainerName int = iota
@@ -39,6 +40,12 @@ var validationErrStr = map[int]string{
 	validationErrNoCpus:          "'cpus' field is mandatory in annotation",
 }
 
+// NewCPUAnnotation returns a new CPUAnnotation
+func NewCPUAnnotation() CPUAnnotation {
+	c := make(CPUAnnotation)
+	return c
+}
+
 // Containers returns container name string in annotation
 func (cpuAnnotation CPUAnnotation) Containers() []string {
 	var containers []string
@@ -47,6 +54,12 @@ func (cpuAnnotation CPUAnnotation) Containers() []string {
 		containers = append(containers, cont.Name)
 	}
 	return containers
+}
+
+// ContainerExists tells if container exist in annotation
+func (cpuAnnotation CPUAnnotation) ContainerExists(name string) bool {
+	_, exists := cpuAnnotation[name]
+	return exists
 }
 
 // ContainerSharedCPUTime returns sum of cpu time requested from shared pool by a container
@@ -115,13 +128,19 @@ func (cpuAnnotation CPUAnnotation) ContainerTotalCPURequest(pool string, cName s
 }
 
 // Decode unmarshals json annotation to CPUAnnotation
-func (cpuAnnotation *CPUAnnotation) Decode(annotation []byte) error {
-	err := json.Unmarshal(annotation, cpuAnnotation)
+func (cpuAnnotation CPUAnnotation) Decode(annotation []byte) error {
+	// The annotation in pod spec could be a map but for now
+	// it is kept as an array for backwards compatibility
+	containers := make([]Container, 0)
+	err := json.Unmarshal(annotation, &containers)
+	for _, container := range containers {
+		cpuAnnotation[container.Name] = container
+	}
 	if err != nil {
 		glog.Error(err)
 		return err
 	}
-	for _, c := range *cpuAnnotation {
+	for _, c := range cpuAnnotation {
 		if len(c.Name) == 0 {
 			return errors.New(validationErrStr[validationErrNoContainerName])
 		}

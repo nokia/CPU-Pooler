@@ -50,6 +50,7 @@ spec:
     matchLabels:
       cpu-pooler: cpu-setter
   template:
+    metadata:
       labels:
         cpu-pooler: cpu-setter
     spec:
@@ -58,7 +59,7 @@ spec:
         image: cpusetter
         imagePullPolicy: IfNotPresent
         ##--cpusetroot needs to be set to the root of the cgroupfs hierarchy used by Kubelet for workloads
-        command: [ "/cpu-setter", "--poolconfigs=/etc/cpu-pooler", "--cpusetroot=/rootfs/sys/fs/cgroup/cpuset/kubepods" ]
+        command: [ "/cpusetter", "--poolconfigs=/etc/cpu-pooler", "--cpusetroot=/rootfs/sys/fs/cgroup/cpuset/kubepods" ]
         resources:
           requests:
             cpu: "10m"

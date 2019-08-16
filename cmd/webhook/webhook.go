@@ -6,18 +6,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/pkg/types"
-	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 var scheme = runtime.NewScheme()
@@ -25,8 +26,9 @@ var codecs = serializer.NewCodecFactory(scheme)
 var resourceBaseName = "nokia.k8s.io"
 
 type containerPoolRequests struct {
-	sharedCPURequests int
-	pools             map[string]int
+	sharedCPURequests    int
+	exclusiveCPURequests bool
+	pools                map[string]int
 }
 type poolRequestMap map[string]containerPoolRequests
 
@@ -45,14 +47,6 @@ func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	}
 }
 
-func isPinningPatchNeeded(containerName string, containersToPatch []string) bool {
-	for _, name := range containersToPatch {
-		if name == containerName {
-			return true
-		}
-	}
-	return false
-}
 func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 	var poolRequests = make(poolRequestMap)
 	for _, c := range pod.Spec.Containers {
@@ -60,7 +54,6 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 		if !exists {
 			cPoolRequests.pools = make(map[string]int)
 		}
-		var sharedFound, exclusiveFound bool
 		for key, value := range c.Resources.Limits {
 			if strings.HasPrefix(string(key), resourceBaseName) {
 
@@ -71,18 +64,14 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 				}
 				if strings.HasPrefix(string(key), resourceBaseName+"/shared") {
 					cPoolRequests.sharedCPURequests += val
-					sharedFound = true
 				}
 				if strings.HasPrefix(string(key), resourceBaseName+"/exclusive") {
-					exclusiveFound = true
+					cPoolRequests.exclusiveCPURequests = true
 				}
 				poolName := strings.TrimPrefix(string(key), resourceBaseName+"/")
 				cPoolRequests.pools[poolName] = val
 				poolRequests[c.Name] = cPoolRequests
 			}
-		}
-		if sharedFound && exclusiveFound {
-			return poolRequestMap{}, fmt.Errorf("Only one type of pool is allowed for a container")
 		}
 	}
 	return poolRequests, nil
@@ -133,7 +122,7 @@ func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Contai
 	patchItem.Op = "replace"
 	cpuVal = `"0m"`
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/resources/requests/cpu"
-	patchItem.Value = 	json.RawMessage(cpuVal)
+	patchItem.Value = json.RawMessage(cpuVal)
 	patchList = append(patchList, patchItem)
 
 	return patchList
@@ -173,6 +162,18 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
 	patchList = append(patchList, patchItem)
 
+	// Put command to args if pod cpu annotation does not exist for the container
+	if len(c.Command) > 0 && !cpuAnnotation.ContainerExists(c.Name) {
+		patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/args"
+		args := `[ "` + strings.Join(c.Command, "\",\"") + `" `
+		if len(c.Args) > 0 {
+			args += `,"` + strings.Join(c.Args, "\",\"") + `"`
+		}
+		args += `]`
+		patchItem.Value = json.RawMessage(args)
+		patchList = append(patchList, patchItem)
+	}
+
 	return patchList, nil
 }
 
@@ -199,7 +200,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		patchList         []patch
 		err               error
 		cpuAnnotation     types.CPUAnnotation
-		containersToPatch []string
 		pinningPatchAdded bool
 	)
 
@@ -216,7 +216,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 		glog.Error(err)
 		return toAdmissionResponse(err)
 	}
-
 	reviewResponse := v1beta1.AdmissionResponse{}
 
 	annotationName := annotationNameFromConfig()
@@ -232,28 +231,46 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 
 	if podAnnotationExists {
-		cpuAnnotation = types.CPUAnnotation{}
+		cpuAnnotation = types.NewCPUAnnotation()
 
 		err = cpuAnnotation.Decode([]byte(podAnnotation))
 		if err != nil {
 			glog.Errorf("Failed to decode pod annotation %v", err)
 			return toAdmissionResponse(err)
 		}
-		containersToPatch = cpuAnnotation.Containers()
 		if err = validateAnnotation(poolRequests, cpuAnnotation); err != nil {
 			glog.Error(err)
 			return toAdmissionResponse(err)
 		}
-		glog.V(2).Infof("Patch containers for pinning %v", containersToPatch)
 	}
 
 	// Patch container if needed.
 	for i, c := range pod.Spec.Containers {
-		if poolRequests[c.Name].sharedCPURequests > 0 {
+		// Set CPU limit if shared CPU were requested and exclusive CPUs were not requested
+		if poolRequests[c.Name].sharedCPURequests > 0 &&
+			!poolRequests[c.Name].exclusiveCPURequests {
 			patchList = patchCPULimit(poolRequests[c.Name].sharedCPURequests,
 				patchList, i, &c)
 		}
-		if isPinningPatchNeeded(c.Name, containersToPatch) {
+		// If pod annotation has entry for this container or
+		// container asks for exclusive cpus, we add patches to enable pinning.
+		// The patches enable process in container to be started with cpu pooler's 'process starter'
+		// The cpusetter sets cpuset for the container and that needs to be completed
+		// before application container is started. If cpuset is set after the application
+		// has started, the cpu affinity setting by application will be overwritten by the cpuset.
+		// The process starter will wait for cpusetter to finish it's job for this container
+		// and starts the application process after that.
+		pinningPatchNeeded := cpuAnnotation.ContainerExists(c.Name)
+		if poolRequests[c.Name].exclusiveCPURequests {
+			if len(c.Command) == 0 && !pinningPatchNeeded {
+				glog.Warningf("Container %s asked exclusive cpus but command not given. CPU affinity settings possibly lost for container", c.Name)
+			} else {
+				pinningPatchNeeded = true
+			}
+		}
+		if pinningPatchNeeded {
+			glog.V(2).Infof("Patch container for pinning %s", c.Name)
+
 			patchList, err = patchContainerForPinning(cpuAnnotation, patchList, i, &c)
 			if err != nil {
 				return toAdmissionResponse(err)

@@ -1,9 +1,15 @@
 package sethandler
 
 import (
-	"encoding/json"
 	"errors"
+	"log"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strconv"
+	"strings"
+	"time"
+
 	"github.com/intel/multus-cni/checkpoint"
 	multusTypes "github.com/intel/multus-cni/types"
 	"github.com/nokia/CPU-Pooler/pkg/types"
@@ -13,18 +19,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
-	"log"
-	"os"
-	"path/filepath"
-	"reflect"
-	"strings"
-	"time"
 )
 
 var (
-	dedicatedPinnerCoreID = 0
-	resourceBaseName      = "nokia.k8s.io"
-	processConfigKey      = resourceBaseName + "/cpus"
+	resourceBaseName = "nokia.k8s.io"
+	processConfigKey = resourceBaseName + "/cpus"
 )
 
 //SetHandler is the data set encapsulating the configuration data needed for the CPUSetter Controller to be able to adjust cpusets
@@ -125,14 +124,25 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 }
 
 func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
+	var (
+		sharedCPUSet, exclusiveCPUSet cpuset.CPUSet
+		err                           error
+	)
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
-			return setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs, nil
+			sharedCPUSet = setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
-			return setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
+			exclusiveCPUSet, err = setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
+			if err != nil {
+				return cpuset.CPUSet{}, err
+			}
 		}
 	}
+	if !sharedCPUSet.IsEmpty() || !exclusiveCPUSet.IsEmpty() {
+		return sharedCPUSet.Union(exclusiveCPUSet), nil
+	}
+
 	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs, nil
 }
 
@@ -155,41 +165,15 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
 }
 
 func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
-	var doesSetContainPinnerCore bool
 	setBuilder := cpuset.NewBuilder()
 	for _, deviceID := range exclusiveCpus.DeviceIDs {
-		deviceIDasInt,err := strconv.Atoi(deviceID)
+		deviceIDasInt, err := strconv.Atoi(deviceID)
 		if err != nil {
 			return cpuset.CPUSet{}, err
 		}
 		setBuilder.Add(deviceIDasInt)
-		if deviceIDasInt == dedicatedPinnerCoreID {
-			doesSetContainPinnerCore = true
-		}
-	}
-	if isPinnerUsedByContainer(pod, container.Name) && !doesSetContainPinnerCore {
-		//1: Container is asking exclusive CPUs + 2: Container has a pool configured in the annotation = Pinner will be used
-		//If pinner is used by a container, we need to the add the configured CPU core holding its thread to their cpuset
-		setBuilder.Add(dedicatedPinnerCoreID)
 	}
 	return setBuilder.Result(), nil
-}
-
-func isPinnerUsedByContainer(pod v1.Pod, containerName string) bool {
-	for key, value := range pod.ObjectMeta.Annotations {
-		if strings.Contains(key, processConfigKey) {
-			var processConfig types.CPUAnnotation
-			err := json.Unmarshal([]byte(value), &processConfig)
-			if err != nil {
-				return false
-			}
-			containerConfig := processConfig.ContainerPools(containerName)
-			if len(containerConfig) > 0 {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func determineCid(podStatus v1.PodStatus, containerName string) string {
@@ -203,7 +187,7 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 
 func containerIDInPodStatus(podStatus v1.PodStatus, containerID string) bool {
 	for _, containerStatus := range podStatus.ContainerStatuses {
-		if strings.HasSuffix(containerStatus.ContainerID, containerID){
+		if strings.HasSuffix(containerStatus.ContainerID, containerID) {
 			return true
 		}
 	}
@@ -230,14 +214,14 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 	}
 	returnContainerPath := pathToContainerCpusetFile
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
-  //Find child cpuset if it exists (kube-proxy)
+	//Find child cpuset if it exists (kube-proxy)
 	filepath.Walk(pathToContainerCpusetFile, func(path string, f os.FileInfo, err error) error {
 		if f.IsDir() {
 			pathToContainerCpusetFile = path
 		}
 		return nil
 	})
-	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return "", errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
 	}
@@ -252,7 +236,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 func getInfraContainerPath(podStatus v1.PodStatus, searchPath string) string {
 	var pathToInfraContainer string
 	filelist, _ := filepath.Glob(filepath.Dir(searchPath) + "/*")
-	for _, fpath := range filelist{
+	for _, fpath := range filelist {
 		fstat, err := os.Stat(fpath)
 		if err != nil {
 			continue
@@ -264,7 +248,7 @@ func getInfraContainerPath(podStatus v1.PodStatus, searchPath string) string {
 	return pathToInfraContainer
 }
 
-func (setHandler *SetHandler) applyCpusetToInfraContainer(pod v1.Pod, pathToSearchContainer string ) error{
+func (setHandler *SetHandler) applyCpusetToInfraContainer(pod v1.Pod, pathToSearchContainer string) error {
 	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
@@ -272,14 +256,14 @@ func (setHandler *SetHandler) applyCpusetToInfraContainer(pod v1.Pod, pathToSear
 		return nil
 	}
 	if pathToSearchContainer == "" {
-		return errors.New("container directory for pod: " +  string(pod.ObjectMeta.UID) + " does not exists under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return errors.New("container directory for pod: " + string(pod.ObjectMeta.UID) + " does not exists under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
 	pathToContainerCpusetFile := getInfraContainerPath(pod.Status, pathToSearchContainer)
 	if pathToContainerCpusetFile == "" {
 		return errors.New("cpuset file does not exist for infra container of pod:" + string(pod.ObjectMeta.UID) + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
 
-	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for infra container:" + filepath.Base(pathToContainerCpusetFile) + " because:" + err.Error())
 	}

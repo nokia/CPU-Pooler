@@ -5,9 +5,9 @@ metadata:
 spec:
   containers:
   - name: cputest-exclusive
-    command: [ /thread_busyloop ]
-    args: ["-c","$(EXCLUSIVE_CPUS)"]
     image: busyloop
+    command: [ /thread_busyloop ]
+    args: ["-c","$(EXCLUSIVE_CPUS)","-s","$(SHARED_CPUS)","-n 'Process cputest-exclusive'"]
     imagePullPolicy: IfNotPresent
     ports:
     - containerPort: 80
@@ -15,6 +15,9 @@ spec:
       requests:
         memory: 2000Mi
         nokia.k8s.io/exclusive-pool: "2"
+        nokia.k8s.io/shared-pool: "500"
       limits:
         memory: 2000Mi
         nokia.k8s.io/exclusive-pool: "2"
+        nokia.k8s.io/shared-pool: "500"
+
