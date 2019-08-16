@@ -5,17 +5,20 @@ import (
 	"testing"
 )
 
-var cpuAnnotation = CPUAnnotation{
-	{Name: "Container1", Processes: []Process{
+var cpuAnnotation CPUAnnotation
+
+func init() {
+	cpuAnnotation = NewCPUAnnotation()
+	cpuAnnotation["Container1"] = Container{Name: "Container1", Processes: []Process{
 		{ProcName: "proc1", Args: []string{"-c", "1"}, CPUs: 120, PoolName: "shared-pool1"},
 		{ProcName: "proc2", Args: []string{"-c", "1"}, CPUs: 1, PoolName: "exclusive-pool2"},
-		{ProcName: "proc3", Args: []string{"-c", "1"}, CPUs: 130, PoolName: "shared-pool1"}}},
-	{Name: "Container2", Processes: []Process{
+		{ProcName: "proc3", Args: []string{"-c", "1"}, CPUs: 130, PoolName: "shared-pool1"}}}
+	cpuAnnotation["Container2"] = Container{Name: "Container2", Processes: []Process{
 		{ProcName: "proc4", Args: []string{"-c", "1"}, CPUs: 120, PoolName: "shared-pool1"},
 		{ProcName: "proc5", Args: []string{"-c", "1"}, CPUs: 1, PoolName: "exclusive-pool2"},
 		{ProcName: "proc6", Args: []string{"-c", "1"}, CPUs: 130, PoolName: "shared-pool1"},
-		{ProcName: "proc7", Args: []string{"-c", "1"}, CPUs: 300, PoolName: "shared-pool3"},
-	}}}
+		{ProcName: "proc7", Args: []string{"-c", "1"}, CPUs: 300, PoolName: "shared-pool3"}}}
+}
 
 func TestGetContainerPools(t *testing.T) {
 	pools := cpuAnnotation.ContainerPools("Container1")
