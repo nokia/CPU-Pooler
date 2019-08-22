@@ -1,7 +1,10 @@
 package sethandler
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intel/multus-cni/checkpoint"
-	multusTypes "github.com/intel/multus-cni/types"
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
@@ -25,6 +26,20 @@ var (
 	resourceBaseName = "nokia.k8s.io"
 	processConfigKey = resourceBaseName + "/cpus"
 )
+
+type checkpointPodDevicesEntry struct {
+	PodUID        string
+	ContainerName string
+	ResourceName  string
+	DeviceIDs     []string
+}
+
+// kubelet checkpoint file structure with only relevant fields
+type checkpointFile struct {
+	Data struct {
+		PodDeviceEntries []checkpointPodDevicesEntry
+	}
+}
 
 //SetHandler is the data set encapsulating the configuration data needed for the CPUSetter Controller to be able to adjust cpusets
 type SetHandler struct {
@@ -147,26 +162,37 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 }
 
 func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
-	checkpoint, err := checkpoint.GetCheckpoint()
+	checkpointFileName := "/var/lib/kubelet/device-plugins/kubelet_internal_checkpoint"
+	var cp checkpointFile
+	buf, err := ioutil.ReadFile(checkpointFileName)
 	if err != nil {
+		log.Println(fmt.Sprintf("Error reading file %s: Error: %v\n", checkpointFileName, err))
 		return cpuset.CPUSet{}, errors.New("Kubelet checkpoint file could not be accessed because:" + err.Error())
 	}
-	podIDStr := string(pod.ObjectMeta.UID)
-	devices, err := checkpoint.GetComputeDeviceMap(podIDStr)
-	if err != nil {
-		return cpuset.CPUSet{}, errors.New("List of assigned devices could not be read from checkpoint file for Pod: " + podIDStr + " because:" + err.Error())
+
+	if err = json.Unmarshal(buf, &cp); err != nil {
+		log.Println("Error unmarshalling kubelet checkpoint file", err)
+		return cpuset.CPUSet{}, err
 	}
-	exclusiveCpus, exist := devices[exclusivePoolName]
-	if !exist {
+
+	podIDStr := string(pod.ObjectMeta.UID)
+	deviceIDs := []string{}
+	for _, entry := range cp.Data.PodDeviceEntries {
+		if entry.PodUID == podIDStr && entry.ContainerName == container.Name &&
+			entry.ResourceName == exclusivePoolName {
+			deviceIDs = append(deviceIDs, entry.DeviceIDs...)
+		}
+	}
+	if len(deviceIDs) == 0 {
 		log.Println("WARNING: Container: " + container.Name + " in Pod: " + podIDStr + " asked for exclusive CPUs, but were not allocated any! Cannot adjust its default cpuset")
 		return cpuset.CPUSet{}, nil
 	}
-	return calculateFinalExclusiveSet(exclusiveCpus, pod, container)
+	return calculateFinalExclusiveSet(deviceIDs, pod, container)
 }
 
-func calculateFinalExclusiveSet(exclusiveCpus *multusTypes.ResourceInfo, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
+func calculateFinalExclusiveSet(exclusiveCpus []string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
 	setBuilder := cpuset.NewBuilder()
-	for _, deviceID := range exclusiveCpus.DeviceIDs {
+	for _, deviceID := range exclusiveCpus {
 		deviceIDasInt, err := strconv.Atoi(deviceID)
 		if err != nil {
 			return cpuset.CPUSet{}, err
