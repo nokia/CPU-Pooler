@@ -56,8 +56,8 @@ func getCPUPoolRequests(pod *corev1.Pod) (poolRequestMap, error) {
 		}
 		for key, value := range c.Resources.Limits {
 			if strings.HasPrefix(string(key), resourceBaseName) {
-
-				val, err := strconv.Atoi(value.String())
+				//convert back from human readable format
+				val, err := strconv.Atoi(strings.Replace(value.String(), "k", "000", 1))
 				if err != nil {
 					glog.Errorf("Cannot convert cpu request to int %s:%s", key, value.String())
 					return poolRequestMap{}, err
