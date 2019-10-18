@@ -24,6 +24,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o cpu
 
 FROM alpine:latest
 
+RUN apk update && apk add util-linux
+
 ARG PLUGIN_PATH=github.com/nokia/CPU-Pooler
 COPY --from=build-env /go/src/${PLUGIN_PATH}/cpu-device-plugin .
 

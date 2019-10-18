@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
@@ -11,10 +12,12 @@ import (
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -30,6 +33,15 @@ type cpuDeviceManager struct {
 	grpcServer     *grpc.Server
 	sharedPoolCPUs string
 	poolType       string
+}
+
+type nodeTopology struct {
+	cpuList []cpu
+}
+
+type cpu struct {
+	coreID int
+	nodeID int
 }
 
 func (cdm *cpuDeviceManager) PreStartContainer(ctx context.Context, psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
@@ -93,11 +105,17 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 				nbrOfCPUs := cdm.pool.CPUs.Size()
 				for i := 0; i < nbrOfCPUs*1000; i++ {
 					cpuID := strconv.Itoa(i)
-					resp.Devices = append(resp.Devices, &pluginapi.Device{cpuID, pluginapi.Healthy})
+					resp.Devices = append(resp.Devices, &pluginapi.Device{ID: cpuID, Health: pluginapi.Healthy})
 				}
 			} else {
+				topologyInfo := getCPUTopology()     
 				for _, cpuID := range cdm.pool.CPUs.ToSlice() {
-					resp.Devices = append(resp.Devices, &pluginapi.Device{strconv.Itoa(cpuID), pluginapi.Healthy})
+					exclusiveCore := pluginapi.Device{ID: strconv.Itoa(cpuID), Health: pluginapi.Healthy}
+					nodeID := getNUMANodeOfCore(topologyInfo, cpuID)
+					if nodeID >= 0 {
+						exclusiveCore.Topology = &pluginapi.TopologyInfo{Nodes: []*pluginapi.NUMANode{{ID: int64(nodeID)}}}
+					}
+					resp.Devices = append(resp.Devices, &exclusiveCore)
 				}
 			}
 			if err := stream.Send(resp); err != nil {
@@ -247,6 +265,45 @@ func createPluginsForPools() error {
 		}
 	}
 	return err
+}
+
+func getCPUTopology() nodeTopology {
+	cmd := exec.Command("lscpu", "-p=cpu,node")
+	var stdout bytes.Buffer
+	cmd.Stdout =  &stdout
+	err := cmd.Run()
+	if err != nil {
+		glog.Infof("could not interrogate the CPU topology of the node, because:" + err.Error())
+	}
+	outStr := string(stdout.Bytes())
+	//Here be dragons: we need to manually parse the stdout into the nodeTopology object line-by-line
+	//lscpu -p and -J options are mutually exclusive :(
+	var topology nodeTopology
+	for _, lsLine := range strings.Split(strings.TrimSuffix(outStr, "\n"), "\n") {
+		cpuInfoStr := strings.Split(lsLine, ",")
+		if len(cpuInfoStr) != 2 {
+			continue
+		}
+		cpuInt, cpuErr := strconv.Atoi(cpuInfoStr[0])
+		numaInt, numaErr := strconv.Atoi(cpuInfoStr[1])
+		if cpuErr != nil || numaErr != nil {
+			continue
+		}
+		topology.cpuList = append(topology.cpuList, cpu{coreID: cpuInt, nodeID:numaInt})
+	}
+	return topology
+}
+
+func getNUMANodeOfCore(topology nodeTopology, coreID int) int {
+	nodeID := -1
+	for _, cpu := range topology.cpuList {
+		if cpu.coreID == coreID {
+			nodeID = cpu.nodeID
+ 			glog.Infof("Exclusive CPU core: " + strconv.Itoa(coreID) + " belongs to CPU socket: " + strconv.Itoa(nodeID))
+			break      
+		}
+	}
+	return nodeID
 }
 
 func main() {

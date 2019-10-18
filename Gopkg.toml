@@ -53,9 +53,8 @@
   name = "k8s.io/apimachinery"
 
 [prune]
-  go-tests = true
   unused-packages = true
 
 [[constraint]]
   name = "k8s.io/kubernetes"
-  version = "1.12.1"
+  version = "1.16.2"
