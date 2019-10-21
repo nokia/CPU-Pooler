@@ -1,0 +1,8 @@
+resourceBaseName: "nokia.k8s.io"
+nodeSelector:
+  nodename: caas_master1
+pools:
+  shared_caas:
+    cpus: 0-3
+  exclusive_caas:
+    cpus: 4-7
