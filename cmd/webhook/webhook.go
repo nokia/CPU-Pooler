@@ -128,6 +128,33 @@ func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Contai
 	return patchList
 }
 
+func patchContainerEnv(poolRequests poolRequestMap, envPatched bool, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
+	var patchItem patch
+	var poolStr string
+
+	if poolRequests[c.Name].exclusiveCPURequests && poolRequests[c.Name].sharedCPURequests > 0 {
+		poolStr = types.ExclusivePoolID + "&" + types.SharedPoolID
+	} else if poolRequests[c.Name].exclusiveCPURequests{
+		poolStr = types.ExclusivePoolID
+	} else if poolRequests[c.Name].sharedCPURequests > 0 {
+		poolStr = types.SharedPoolID
+	} else {
+		poolStr = types.DefaultPoolID
+	}
+	patchItem.Op = "add"
+	cpuPoolEnvPatch := `{"name":"CPU_POOLS","value":"` + poolStr + `" }`
+	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/env"
+	if envPatched || len(c.Env) > 0 {
+		patchItem.Path += "/-"
+	} else {
+		cpuPoolEnvPatch = `[` + cpuPoolEnvPatch + `]`
+	}
+	patchItem.Value = json.RawMessage(cpuPoolEnvPatch)
+	patchList = append(patchList, patchItem)
+
+	return patchList, nil
+}
+
 func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
 
@@ -247,6 +274,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Patch container if needed.
 	for i, c := range pod.Spec.Containers {
 		// Set CPU limit if shared CPU were requested and exclusive CPUs were not requested
+		containerEnvPatched := false
 		if poolRequests[c.Name].sharedCPURequests > 0 &&
 			!poolRequests[c.Name].exclusiveCPURequests {
 			patchList = patchCPULimit(poolRequests[c.Name].sharedCPURequests,
@@ -276,6 +304,15 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 				return toAdmissionResponse(err)
 			}
 			pinningPatchAdded = true
+			containerEnvPatched = true
+		}
+		if poolRequests[c.Name].sharedCPURequests > 0 ||
+			 poolRequests[c.Name].exclusiveCPURequests {
+				// Patch container environment variable
+				patchList, err = patchContainerEnv(poolRequests, containerEnvPatched, patchList, i, &c)
+				if err != nil {
+					return toAdmissionResponse(err)
+				}
 		}
 	}
 	// Add volumes if any container was patched for pinning
