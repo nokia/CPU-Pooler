@@ -3,9 +3,9 @@
 [![Build Status](https://travis-ci.org/nokia/CPU-Pooler.svg?branch=master)](https://travis-ci.org/nokia/CPU-Pooler)
 
 ## Overview
-CPU Pooler for Kubernetes is a solution for Kubernetes to manage predefined, distinct CPU pools of Kubernetes Nodes, and physically separate the CPU resources of the containers connecting to the various pools.
+CPU-Pooler for Kubernetes is a solution for Kubernetes to manage predefined, distinct CPU pools of Kubernetes Nodes, and physically separate the CPU resources of the containers connecting to the various pools.
 
-Two explicit types of CPU pools are supported; exclusive and shared. If a container does not explicitly ask resources from these pools, it will belong to the default pool.
+Two explicit types of CPU pools are supported; exclusive and shared. If a container does not explicitly ask resources from these pools, it will belong to a third one, called default.
 
 Request from exclusive pool will allocate CPU(s) for latency-sensitive containers requiring exclusive access.
 
@@ -13,6 +13,15 @@ Containers content with some, limited level of sharing, but still appreciating b
 
 The default pool is synonymous to the Kubelet managed, by default existing shared pool. Worth noting that the shared and default pool's CPU sets, and characteristics are distinct.
 By supporting the "original" CPU allocation method in parallel with the enhanced, 3rd party containers totally content with the default CPU management policy of Kubernetes can be instantiated on a CPU-Pooler upgraded system without any configuration changes.
+
+## Topology awareness (NUMA)
+CPU-Pooler is officially topology aware starting with the 0.4.0 release!
+
+Moreover, unlike other external managers CPU-Pooler natively integrates into Kubernetes' own Topology Manager. CPU-Pooler reports the NUMA Node ID of all the CPUs belonging to an exclusive CPU pool to the upstream Topology Manager.
+This means whenever a Pod requests resources from Kubernetes where topology matters -e.g. SR-IOV virtual functions, exclusive CPUs, GPUs etc.- Kubernetes will automatically assign resources with their NUMA node aligned - CPU-Pooler managed cores included!
+
+This feature is automatic, therefore it does not require any configuration from the user.
+For it to work though CPU-Pooler's version must be at least 0.4.0, while Kubernetes must be at least 1.17.X.
 
 ## Components of the CPU-Pooler project
 The CPU-Pooler project contains 4 core components:
@@ -36,21 +45,24 @@ As CPUSetter is triggered by all Pods on all Nodes, we can be sure no containers
 
 ## Using the allocated CPUs
 
-For running the application in allocated CPUs or pinning application process / thread(s) to allocated CPUs , there are following options available:
+By default CPU-Pooler only provisions the appropriate cpuset for a container based on its resource request, but does not intervene with  how threads inside the container are scheduled between the allowed vCPUs.
 
-**cpuset**
-
-Cpuset basically just restricts container to run on certain CPU(s) so relying on cpuset isolation is suitable for plain shared CPU allocation. This option is also suitable for allocating  one exclusive CPU for a single threaded application.
+For users who require explicitly pinning application process / thread(s) to allocated CPUs for some reason, the following options are available:
 
 **pod annotation**
 
-If container has multiple processes and multiple exclusive CPUs are allocated or different pool types are used, pod annotation can be used to configure processes and CPU amounts for them. In this case CPU Pooler takes care of pinning the processes to allocated CPUs. This is suitable for single threaded processes running on exclusive CPUs. The container can also have process(es) running on shared CPUs
+If container has multiple processes and multiple exclusive CPUs are allocated or different pool types are used, pod annotation can be used to configure processes and CPU amounts for them.
+In this case CPU Pooler takes care of pinning the processes to allocated -but only to the allocated- CPUs. This is suitable for single threaded processes running on exclusive CPUs. The container can also have process(es) running on shared CPUs
 
 **use environment variables for pinning**
 
-CPU Pooler sets allocated exclusive CPUs to environment variable `EXCLUSIVE_CPUS` and allocated shared CPUs to `SHARED_CPUS` environment variable. They contain CPU(s) as comma separated list. These variables can be used by the application to read the allocated CPU(s) and do pinning of threads / processes to the CPU(s). This option needs to be used e.g for multithreaded processess with exlusive CPUs.
+CPU Pooler sets allocated exclusive CPUs to environment variable `EXCLUSIVE_CPUS` and allocated shared CPUs to `SHARED_CPUS` environment variable. They contain CPU(s) as comma separated list. These variables can be used by the application to read the allocated CPU(s) and do pinning of threads / processes to the CPU(s).
 
-In this option there is a synchronization problem in CPUsetter setting the cpuset and application doing the pinning (by setting the CPU affinity); if application does the pinning immediately after the startup, it is highly likely that CPUsetter has not finished it's job and cpuset is set after the CPU affinity by the application process. In this case the affinity setting is lost. This problem is solved by the `process-starter`, which waits for finishing of cpuset configuration and starts the container process only after that. The `process-starter` can be used only if the `command` property is configured in container's pod manifest. If the `command` is not configured, the `process-starer` does not know which process to start in the container. If `command` cannot be configured, application must make sure that cpuset is configured (=matches to union of SHARED_CPUS and EXCLUSIVE_CPUS) before setting the CPU affinity.
+
+In order to avoid possible race conditions occuring due to multiple processes trying to set affinity at the same time (or application trying to set it too early); CPU-Pooler can guarantee that the container's entrypoint is only executed once the proper CPU configuration has been provisioned.
+This is achieved by the `process-starter` component under some conditions.
+In order for this functionality to work as intended the `command` property must be configured in container's pod manifest. If the `command` is not configured, the `process-starer` won't be used because it is not known which process needs to be started in the container.
+In such cases we fall back to the native Linux thread scheduling mechanism, but depending on user activity this might result in exotic race conditions occuring.
 
 ## Configuration
 
@@ -59,6 +71,8 @@ Kubelet treats Devices transparently, therefore it will never realize the CPU-Po
 In order to avoid double bookkeeping of CPU resources in the cluster, every Node's Kubelet hosting the CPU-Pooler Device Plugin should be configured according to the following formula:
 --system-reserved = <TOTAL_CPU_CAPACITY> - SIZEOF(DEFAULT_POOL) + <DEFAULT_SYSTEM_RESERVED> 
 This setting effectively tells Kubelet to discount the capacity belonging to the CPU-Pooler managed shared and exclusive pools.
+
+Besides that, please note that Kubelet's inbuilt CPU Manager needs to be disabled on the Nodes which run CPU-Pooler to avoid overwriting CPU-Pooler's more fine-grained cpuset configuration.
 
 ### CPU pools
 
