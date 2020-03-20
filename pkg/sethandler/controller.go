@@ -244,8 +244,9 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 	trimmedCid := strings.TrimPrefix(containerID, "docker://")
 	var pathToContainerCpusetFile string
 	filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
-		if strings.HasSuffix(path, trimmedCid) {
+		if strings.Contains(path, trimmedCid) {
 			pathToContainerCpusetFile = path
+			return filepath.SkipDir
 		}
 		return nil
 	})
