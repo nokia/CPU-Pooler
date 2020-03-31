@@ -24,6 +24,7 @@ import (
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var resourceBaseName = "nokia.k8s.io"
+var processStarterPath string
 
 type containerPoolRequests struct {
 	sharedCPURequests    int
@@ -169,8 +170,9 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 
 	// hostbin volumeMount. Location for process starter binary
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
+	contVolumePatch := `{"name":"hostbin","mountPath":"` + processStarterPath + `","readOnly":true}`
 	patchItem.Value =
-		json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)
+		json.RawMessage(contVolumePatch)
 	patchList = append(patchList, patchItem)
 
 	// Container name to env variable
@@ -186,7 +188,8 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 
 	// Overwrite entrypoint
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/command"
-	patchItem.Value = json.RawMessage(`[ "/opt/bin/process-starter" ]`)
+	contEPPatch := `[ "` + processStarterPath + `" ]`
+	patchItem.Value = json.RawMessage(contEPPatch)
 	patchList = append(patchList, patchItem)
 
 	// Put command to args if pod cpu annotation does not exist for the container
@@ -214,7 +217,8 @@ func patchVolumesForPinning(patchList []patch) []patch {
 	patchList = append(patchList, patchItem)
 	// hostbin volume
 	patchItem.Path = "/spec/volumes/-"
-	patchItem.Value = json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)
+	volumePathPatch := `{"name":"hostbin","hostPath":{ "path":"` + processStarterPath + `"} }`
+	patchItem.Value = json.RawMessage(volumePathPatch)
 	patchList = append(patchList, patchItem)
 
 	return patchList
@@ -389,6 +393,8 @@ func main() {
 		"after server cert).")
 	flag.StringVar(&keyFile, "tls-private-key-file", keyFile, ""+
 		"File containing the default x509 private key matching --tls-cert-file.")
+	flag.StringVar(&processStarterPath, "process-starter-path", "/opt/bin/process-starter", ""+
+		"Path to process-starter binary file. Optional parameter, default path is /opt/bin/process-starter.")
 
 	flag.Parse()
 
