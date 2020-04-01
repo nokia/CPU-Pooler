@@ -225,9 +225,10 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 	return ""
 }
 
-func containerIDInPodStatus(podStatus v1.PodStatus, containerID string) bool {
+func containerIDInPodStatus(podStatus v1.PodStatus, containerDirName string) bool {
 	for _, containerStatus := range podStatus.ContainerStatuses {
-		if strings.HasSuffix(containerStatus.ContainerID, containerID) {
+		trimmedCid := strings.TrimPrefix(containerStatus.ContainerID, "docker://")
+		if strings.Contains(containerDirName, trimmedCid) {
 			return true
 		}
 	}
