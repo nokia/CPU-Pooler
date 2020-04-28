@@ -9,7 +9,7 @@ import (
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"golang.org/x/net/context"
 	grpc "google.golang.org/grpc"
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 	"net"
 	"os"
 	"os/exec"
@@ -108,7 +108,7 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 					resp.Devices = append(resp.Devices, &pluginapi.Device{ID: cpuID, Health: pluginapi.Healthy})
 				}
 			} else {
-				topologyInfo := getCPUTopology()     
+				topologyInfo := getCPUTopology()
 				for _, cpuID := range cdm.pool.CPUs.ToSlice() {
 					exclusiveCore := pluginapi.Device{ID: strconv.Itoa(cpuID), Health: pluginapi.Healthy}
 					nodeID := getNUMANodeOfCore(topologyInfo, cpuID)
@@ -300,7 +300,7 @@ func getNUMANodeOfCore(topology nodeTopology, coreID int) int {
 		if cpu.coreID == coreID {
 			nodeID = cpu.nodeID
  			glog.Infof("Exclusive CPU core: " + strconv.Itoa(coreID) + " belongs to CPU socket: " + strconv.Itoa(nodeID))
-			break      
+			break
 		}
 	}
 	return nodeID
