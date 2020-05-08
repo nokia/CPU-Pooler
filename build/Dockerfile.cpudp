@@ -1,32 +1,20 @@
 # Build stage
-FROM golang:alpine AS build-env
-
+FROM golang:1.13-alpine AS build-env
 ARG PLUGIN_PATH=github.com/nokia/CPU-Pooler
 
-RUN apk update && apk add curl git
-
-RUN mkdir -p ${GOPATH}/src/${PLUGIN_PATH}
-
-RUN curl -fsSL -o /usr/local/bin/dep https://github.com/golang/dep/releases/download/v0.5.0/dep-linux-amd64 && chmod +x /usr/local/bin/dep
-
+RUN apk add curl git
 WORKDIR ${GOPATH}/src/${PLUGIN_PATH}
-
-ADD Gopkg.* ./
-
-RUN dep ensure --vendor-only
-
+ADD go.* ./
+RUN go mod download
 ADD . ./
-
 RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o cpu-device-plugin ${PLUGIN_PATH}/cmd/cpu-device-plugin
 
 
 # Final image creation
-
 FROM alpine:latest
-
-RUN apk update && apk add util-linux
-
 ARG PLUGIN_PATH=github.com/nokia/CPU-Pooler
-COPY --from=build-env /go/src/${PLUGIN_PATH}/cpu-device-plugin .
+
+RUN apk add util-linux
+COPY --from=build-env /go/src/${PLUGIN_PATH}/cpu-device-plugin /
 
 ENTRYPOINT ["/cpu-device-plugin"]
