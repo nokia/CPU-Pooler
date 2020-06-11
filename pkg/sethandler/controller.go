@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
@@ -20,11 +21,14 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
-	resourceBaseName = "nokia.k8s.io"
-	processConfigKey = resourceBaseName + "/cpus"
+	resourceBaseName 		= "nokia.k8s.io"
+	processConfigKey 		= resourceBaseName + "/cpus"
+	setterAnnotationSuffix = "cpusets-configured"
+	setterAnnotationKey		= resourceBaseName + "/" + setterAnnotationSuffix
 )
 
 type checkpointPodDevicesEntry struct {
@@ -115,23 +119,24 @@ func (setHandler *SetHandler) PodChanged(oldPod, newPod v1.Pod) {
 func shouldPodBeHandled(pod v1.Pod) bool {
 	setterNodeName := os.Getenv("NODE_NAME")
 	podNodeName := pod.Spec.NodeName
+
 	//Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
 	if setterNodeName == "" || podNodeName == "" || setterNodeName != podNodeName {
 		return false
 	}
 	//If the Pod is not running, its containers haven't been created yet - no cpuset cgroup is present to be adjusted by the CPUSetter
-	if pod.Status.Phase != "Running" {
+	if pod.ObjectMeta.Annotations[setterAnnotationKey] != "" {
 		return false
+	}
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.ContainerID == "" {
+			return false
+		}
 	}
 	return true
 }
 
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if !containerStatus.Ready {
-			return
-		}
-	}
 	var pathToContainerCpusetFile string
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
@@ -146,9 +151,14 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 			continue
 		}
 	}
-	err := setHandler.applyCpusetToInfraContainer(pod, pathToContainerCpusetFile)
+	err := setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
 	if err != nil {
 		log.Println("ERROR: Cpuset for the infracontainer of Pod:" + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+		return
+	}
+	err = k8sclient.SetPodAnnotation(pod, resourceBaseName + "~1" + setterAnnotationSuffix, "true")
+	if err != nil {
+		log.Println("ERROR: Pod Annontation cannot update, because: " + err.Error())
 	}
 }
 
@@ -290,21 +300,20 @@ func getInfraContainerPath(podStatus v1.PodStatus, searchPath string) string {
 	return pathToInfraContainer
 }
 
-func (setHandler *SetHandler) applyCpusetToInfraContainer(pod v1.Pod, pathToSearchContainer string) error {
+func (setHandler *SetHandler) applyCpusetToInfraContainer(podMeta metav1.ObjectMeta, podStatus v1.PodStatus, pathToSearchContainer string) error {
 	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
-		log.Println("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container of pod: " + string(pod.ObjectMeta.UID))
+		log.Println("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container for " + podMeta.Name + " in namespace: " + podMeta.Namespace)
 		return nil
 	}
 	if pathToSearchContainer == "" {
-		return errors.New("container directory for pod: " + string(pod.ObjectMeta.UID) + " does not exists under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return errors.New("container directory does not exists under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
-	pathToContainerCpusetFile := getInfraContainerPath(pod.Status, pathToSearchContainer)
+	pathToContainerCpusetFile := getInfraContainerPath(podStatus, pathToSearchContainer)
 	if pathToContainerCpusetFile == "" {
-		return errors.New("cpuset file does not exist for infra container of pod:" + string(pod.ObjectMeta.UID) + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return errors.New("cpuset file does not exist for infra container under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
 	}
-
 	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for infra container:" + filepath.Base(pathToContainerCpusetFile) + " because:" + err.Error())

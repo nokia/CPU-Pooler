@@ -24,6 +24,7 @@ import (
 var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var resourceBaseName = "nokia.k8s.io"
+var annotationKey = "patched"
 var processStarterPath string
 
 type containerPoolRequests struct {
@@ -160,7 +161,6 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 	var patchItem patch
 
 	glog.V(2).Infof("Adding CPU pinning patches")
-
 	// podinfo volumeMount
 	patchItem.Op = "add"
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
@@ -220,9 +220,16 @@ func patchVolumesForPinning(patchList []patch) []patch {
 	volumePathPatch := `{"name":"hostbin","hostPath":{ "path":"` + processStarterPath + `"} }`
 	patchItem.Value = json.RawMessage(volumePathPatch)
 	patchList = append(patchList, patchItem)
-
 	return patchList
+}
 
+func patchPinningAnnotation(patchList []patch) []patch {
+	var patchItem patch
+	patchItem.Op = "add"
+	patchItem.Path = "/metadata/annotations/" + resourceBaseName + "~1" + annotationKey
+	patchItem.Value = json.RawMessage(`"done"`)
+	patchList = append(patchList, patchItem)
+	return patchList
 }
 
 func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
@@ -252,6 +259,10 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	annotationName := annotationNameFromConfig()
 
 	reviewResponse.Allowed = true
+
+	if pod.ObjectMeta.Annotations[resourceBaseName + "/" + annotationKey] == "done" {
+		return &reviewResponse
+	}
 
 	podAnnotation, podAnnotationExists := pod.ObjectMeta.Annotations[annotationName]
 
@@ -322,6 +333,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Add volumes if any container was patched for pinning
 	if pinningPatchAdded {
 		patchList = patchVolumesForPinning(patchList)
+		patchList = patchPinningAnnotation(patchList)
 	} else if podAnnotationExists {
 		glog.Errorf("CPU annotation exists but no container was patched %v:%v",
 			cpuAnnotation, pod.Spec.Containers)
