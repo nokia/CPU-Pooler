@@ -128,6 +128,9 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 	if pod.ObjectMeta.Annotations[setterAnnotationKey] != "" {
 		return false
 	}
+	if len(pod.Status.ContainerStatuses) == 0 {
+		return false
+	}
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		if containerStatus.ContainerID == "" {
 			return false
@@ -141,24 +144,24 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod:" + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+			log.Println("ERROR: Cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
 			continue
 		}
 		containerID := determineCid(pod.Status, container.Name)
 		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
 		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod:" + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+			log.Println("ERROR: Cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
 			continue
 		}
 	}
 	err := setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
 	if err != nil {
-		log.Println("ERROR: Cpuset for the infracontainer of Pod:" + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+		log.Println("ERROR: Cpuset for the infracontainer of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
 		return
 	}
 	err = k8sclient.SetPodAnnotation(pod, resourceBaseName + "~1" + setterAnnotationSuffix, "true")
 	if err != nil {
-		log.Println("ERROR: Pod Annontation cannot update, because: " + err.Error())
+		log.Println("ERROR: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + "  annontation cannot update, because: " + err.Error())
 	}
 }
 
