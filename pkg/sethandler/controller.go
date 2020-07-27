@@ -148,6 +148,10 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 			continue
 		}
 		containerID := determineCid(pod.Status, container.Name)
+		if containerID == "" {
+			log.Println("ERROR: Cannot determine container id for " + container.Name + " from Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID))
+			return
+		}
 		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
 		if err != nil {
 			log.Println("ERROR: Cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
