@@ -91,7 +91,7 @@ func CreateTempSysFs() error {
 
 	for _, dir := range ts.dirList {
 		for filename, content := range ts.fileList {
-			if err := ioutil.WriteFile(filepath.Join(filepath.Join(ts.dirRoot, dir), filename), content, 0777); err != nil {
+			if err := ioutil.WriteFile(filepath.Join(ts.dirRoot, dir, filename), content, 0777); err != nil {
 				return err
 			}
 		}
