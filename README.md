@@ -191,7 +191,7 @@ $ docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https
 Process starter
 
 ```
-$ dep ensure --vendor-only
+$ go mod download
 $ CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' github.com/nokia/CPU-Pooler/cmd/process-starter
 ```
 
