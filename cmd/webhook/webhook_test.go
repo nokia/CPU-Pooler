@@ -14,6 +14,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+var processStarterTestPath = "/opt/bin/process-starter"
+
 func createAdmReviewReq(t *testing.T, containers []corev1.Container) []byte {
 	pod := corev1.Pod{}
 	pod.Spec.Containers = make([]corev1.Container, 0)
@@ -159,20 +161,22 @@ func TestMutatePodSharedCpu(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not read pod spec")
 	}
-
+	patchValueVolMnt := `{"name":"hostbin","mountPath":"/opt/bin/process-starter","readOnly":true}`
+	patchValueCommand := `[ "` + processStarterTestPath + `" ]`
+	patchValueVolumes := `{"name":"hostbin","hostPath":{ "path":"` + processStarterTestPath + `"} }`
 	expectedPatches := []patch{
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
+			Value: json.RawMessage(patchValueVolMnt)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
-			Value: json.RawMessage(`[ "/opt/bin/process-starter" ]`)},
+			Value: json.RawMessage(patchValueCommand)},
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
+			Value: json.RawMessage(patchValueVolumes)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }
@@ -183,23 +187,26 @@ func TestMutatePodExclusiveCpu(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not read pod spec")
 	}
-
+	patchValueVolMnt := `{"name":"hostbin","mountPath":"` + processStarterTestPath + `","readOnly":true}`
+	patchValueCommand := `[ "` + processStarterTestPath + `" ]`
+	patchValueVolumes := `{"name":"hostbin","hostPath":{ "path":"` + processStarterTestPath + `"} }`
 	expectedPatches := []patch{
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
+			Value: json.RawMessage(patchValueVolMnt)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
-			Value: json.RawMessage(`[ "/opt/bin/process-starter" ]`)},
+			Value: json.RawMessage(patchValueCommand)},
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
+			Value: json.RawMessage(patchValueVolumes)},
 	}
 	handleAndChekAdmReview(t, admReviewReq, expectedPatches, nil)
 }
+
 func TestMutatePodWrongPoolValueRequest(t *testing.T) {
 
 	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-wrong-pool-value-req.json")
@@ -243,22 +250,24 @@ func TestMutateAnnotationPoolMissingInResource(t *testing.T) {
 }
 
 func TestMutateBothPoolTypesRequestedInResource(t *testing.T) {
-
+	patchValueVolMnt := `{"name":"hostbin","mountPath":"` + processStarterTestPath + `","readOnly":true}`
+	patchValueCommand := `[ "` + processStarterTestPath + `" ]`
+	patchValueVolumes := `{"name":"hostbin","hostPath":{ "path":"` + processStarterTestPath + `"} }`
 	expectedPatches := []patch{
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
 			Value: json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)},
 		patch{Op: "add", Path: "/spec/containers/0/volumeMounts/-",
-			Value: json.RawMessage(`{"name":"hostbin","mountPath":"/opt/bin","readOnly":true}`)},
+			Value: json.RawMessage(patchValueVolMnt)},
 		patch{Op: "add", Path: "/spec/containers/0/env",
 			Value: json.RawMessage(`[{"name": "CONTAINER_NAME", "value": "cputestcontainer"}]`)},
 		patch{Op: "add", Path: "/spec/containers/0/command",
-			Value: json.RawMessage(`[ "/opt/bin/process-starter" ]`)},
+			Value: json.RawMessage(patchValueCommand)},
 		patch{Op: "add", Path: "/spec/containers/0/args",
 			Value: json.RawMessage(`[ "/bin/bash","-c","--","while true; do sleep 1; done;" ]`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
 			Value: json.RawMessage(`{"name":"podinfo","downwardAPI": { "items": [ { "path" : "annotations","fieldRef":{ "fieldPath": "metadata.annotations"} } ] } }`)},
 		patch{Op: "add", Path: "/spec/volumes/-",
-			Value: json.RawMessage(`{"name":"hostbin","hostPath":{ "path":"/opt/bin"} }`)},
+			Value: json.RawMessage(patchValueVolumes)},
 	}
 	admReviewReq, err := ioutil.ReadFile("../../test/testdata/pod-spec-both-pool-types-req.json")
 	if err != nil {

@@ -25,7 +25,7 @@ var scheme = runtime.NewScheme()
 var codecs = serializer.NewCodecFactory(scheme)
 var resourceBaseName = "nokia.k8s.io"
 var annotationKey = "patched"
-var processStarterPath string
+var processStarterPath = "/opt/bin/process-starter"
 
 type containerPoolRequests struct {
 	sharedCPURequests    int
@@ -136,7 +136,7 @@ func patchContainerEnv(poolRequests poolRequestMap, envPatched bool, patchList [
 
 	if poolRequests[c.Name].exclusiveCPURequests && poolRequests[c.Name].sharedCPURequests > 0 {
 		poolStr = types.ExclusivePoolID + "&" + types.SharedPoolID
-	} else if poolRequests[c.Name].exclusiveCPURequests{
+	} else if poolRequests[c.Name].exclusiveCPURequests {
 		poolStr = types.ExclusivePoolID
 	} else if poolRequests[c.Name].sharedCPURequests > 0 {
 		poolStr = types.SharedPoolID
@@ -260,7 +260,7 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 
 	reviewResponse.Allowed = true
 
-	if pod.ObjectMeta.Annotations[resourceBaseName + "/" + annotationKey] == "done" {
+	if pod.ObjectMeta.Annotations[resourceBaseName+"/"+annotationKey] == "done" {
 		return &reviewResponse
 	}
 
@@ -322,12 +322,12 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 			containerEnvPatched = true
 		}
 		if poolRequests[c.Name].sharedCPURequests > 0 ||
-			 poolRequests[c.Name].exclusiveCPURequests {
-				// Patch container environment variable
-				patchList, err = patchContainerEnv(poolRequests, containerEnvPatched, patchList, i, &c)
-				if err != nil {
-					return toAdmissionResponse(err)
-				}
+			poolRequests[c.Name].exclusiveCPURequests {
+			// Patch container environment variable
+			patchList, err = patchContainerEnv(poolRequests, containerEnvPatched, patchList, i, &c)
+			if err != nil {
+				return toAdmissionResponse(err)
+			}
 		}
 	}
 	// Add volumes if any container was patched for pinning
@@ -405,7 +405,7 @@ func main() {
 		"after server cert).")
 	flag.StringVar(&keyFile, "tls-private-key-file", keyFile, ""+
 		"File containing the default x509 private key matching --tls-cert-file.")
-	flag.StringVar(&processStarterPath, "process-starter-path", "/opt/bin/process-starter", ""+
+	flag.StringVar(&processStarterPath, "process-starter-path", processStarterPath, ""+
 		"Path to process-starter binary file. Optional parameter, default path is /opt/bin/process-starter.")
 
 	flag.Parse()

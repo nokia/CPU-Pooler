@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 )
 
 func check(e error) {
@@ -23,44 +22,42 @@ type tmpSysFs struct {
 
 var ts = tmpSysFs{
 	dirList: []string{
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0001/0001",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0001/cont01",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0001/infrac1",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0002/0002",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0002/cont02",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0002/infrac2",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0003/0003a",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0003/0003b",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0003/cont03a",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0003/cont03b",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0003/infrac3",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0004/0004a",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0004/0004b",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0004/cont04a",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0004/cont04b",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0004/infrac4",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/0005a",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/0005b",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/0005c",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/cont05a",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/cont05b",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/cont05c",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0005/infrac5",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0006/0006",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0006/cont06",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0006/infrac6",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0007/0007",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0007/cont07",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0007/infrac8",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0008/0008a",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0008/0008b",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0008/cont08a",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0008/cont08b",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0008/infrac8",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0009/0009",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0009/cont09",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0009/infrac9",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0010/0010",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0010/cont10",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0010/infrac10",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0011/0011",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0011/0012",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0012/0012",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0013/0013",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0014/0014",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0015/0015",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0016/0016",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0017/0017",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0018/0018",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0019/0019",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0021/0021",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0022/0022",
-		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0023/0023",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0011/cont11",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0012/cont12",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0013/cont13",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0014/cont14",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0015/cont15",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0016/cont16",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0017/cont17",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0018/cont18",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0019/cont19",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0021/cont21",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0022/cont22",
 	},
 	fileList: map[string][]byte{
 		"cpuset.cpus": []byte("E"),
@@ -68,35 +65,35 @@ var ts = tmpSysFs{
 }
 
 // CreateTempSysFs create temporary fake filesystem for cpusets
-func CreateTempSysFs() error {
+func CreateTempSysFs() (string, error) {
 	originalRoot, err := os.Open("/")
 	ts.originalRoot = originalRoot
 
 	tmpdir, err := ioutil.TempDir("/tmp", "sethandler-")
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	ts.dirRoot = tmpdir
 	err = exec.Command("sudo", "chmod", "777", ts.dirRoot).Run()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	for _, dir := range ts.dirList {
 		if err := os.MkdirAll(filepath.Join(ts.dirRoot, dir), 0777); err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	for _, dir := range ts.dirList {
 		for filename, content := range ts.fileList {
 			if err := ioutil.WriteFile(filepath.Join(ts.dirRoot, dir, filename), content, 0777); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
-	return nil
+	return tmpdir, nil
 }
 
 // CreateCheckpointFile provides the checkpoint file
@@ -119,8 +116,7 @@ func CreateCheckpointFile() error {
 			{"PodUID":"pod0016","ContainerName":"chckpnt_no_device_no_res"},
 			{"PodUID":"pod0019","ContainerName":"bad_deviceID_format","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["a","b","c"]},
 			{"PodUID":"pod0020","ContainerName":"no_cpuset_file","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]},
-			{"PodUID":"pod0021","ContainerName":"no_CID","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]},
-			{"PodUID":"pod0022","ContainerName":"naming_mismatch","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]}],
+			{"PodUID":"pod0021","ContainerName":"naming_mismatch","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]}],
 			"RegisteredDevices":{"nokia.k8s.io/default":["0-2"],"nokia.k8s.io/exclusive_caas":["3","4","5","6","7","8","12","13","14","16"],"nokia.k8s.io/shared_caas":["5889","74","97","324","383","951"]}},
 			"Checksum":403603645}`
 	)
@@ -150,9 +146,6 @@ func CreateCheckpointFile() error {
 func RemoveTempSysFs() error {
 	err := ts.originalRoot.Chdir()
 	if err != nil {
-		return err
-	}
-	if err = syscall.Chroot("."); err != nil {
 		return err
 	}
 	if err = ts.originalRoot.Close(); err != nil {
