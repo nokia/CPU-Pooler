@@ -241,3 +241,8 @@ Upon instantiation you can observe that the cpuset.cpus parameter of the created
 - to the configured cpuset belonging to the shared pool for sharedtestcontainer
 - to the a cpuset containing only the ID of the 2 chosen cores for exclusivetestcontainer
 - to the configured cpuset belonging to the default pool for defaulttestcontainer
+
+
+## License
+
+This project is licensed under the BSD-3-Clause license - see the [LICENSE](https://github.com/nokia/CPU-Pooler/blob/master/LICENSE).
