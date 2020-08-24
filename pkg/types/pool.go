@@ -1,13 +1,14 @@
 package types
 
 import (
-	"errors"
-	"strings"
-	"github.com/go-yaml/yaml"
-	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"strings"
+
+	"github.com/golang/glog"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"gopkg.in/yaml.v2"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
@@ -53,7 +54,7 @@ func DeterminePoolType(poolName string) string {
 func DeterminePoolConfig() (PoolConfig,string,error) {
 	nodeLabels, err := k8sclient.GetNodeLabels()
 	if err != nil {
-		return PoolConfig{}, "", errors.New("Following error happend when trying to read K8s API server Node object:" + err.Error())
+		return PoolConfig{}, "", fmt.Errorf("following error happend when trying to read K8s API server Node object: %s", err)
 	}
 	return readPoolConfig(nodeLabels)
 }
@@ -82,7 +83,7 @@ func readPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
 			}
 		}
 	}
-	return PoolConfig{}, "", errors.New("No matching pool configuration file found for provided nodeSelector labels")
+	return PoolConfig{}, "", fmt.Errorf("no matching pool configuration file found for provided nodeSelector labels")
 }
 
 // ReadPoolConfigFile reads a pool configuration file
@@ -96,11 +97,11 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 	}
 	file, err := ioutil.ReadFile(name)
 	if err != nil {
-		return PoolConfig{}, errors.New("Could not read poolconfig file named: " + name + " because:" + err.Error())
+		return PoolConfig{}, fmt.Errorf("could not read poolconfig file: %s, because: %s", name, err)
 	}
 	err = yaml.Unmarshal([]byte(file), &parsePools)
 	if err != nil {
-		return PoolConfig{}, errors.New("Poolconfig file could not be parsed because:" + err.Error())
+		return PoolConfig{}, fmt.Errorf("poolconfig file could not be parsed because: %s", err)
 	}
 	pools.NodeSelector = parsePools.NodeSelector
 	pools.Pools = map[string]Pool{}
@@ -108,7 +109,7 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 		temp := pools.Pools[pool]
 		temp.CPUs, err = cpuset.Parse(parsePools.Pools[pool].CPUStr)
 		if err != nil {
-			return PoolConfig{}, errors.New("CPUs could not be parsed because:" + err.Error())
+			return PoolConfig{}, fmt.Errorf("CPUs could not be parsed because: %s", err)
 		}
 		pools.Pools[pool] = temp
 	}

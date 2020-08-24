@@ -2,7 +2,6 @@ package sethandler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,12 +15,12 @@ import (
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -144,28 +143,28 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
 	for _, container := range pod.Spec.Containers {
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+			log.Printf("ERROR: Cpuset for the containers of Pod: %s ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 			continue
 		}
 		containerID := determineCid(pod.Status, container.Name)
 		if containerID == "" {
-			log.Println("ERROR: Cannot determine container id for " + container.Name + " from Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID))
+			log.Printf("ERROR: Cannot determine container id for %s from Pod: %s ID: %s", container.Name, pod.ObjectMeta.Name, pod.ObjectMeta.UID)
 			return
 		}
 		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
 		if err != nil {
-			log.Println("ERROR: Cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+			log.Printf("ERROR: Cpuset for the containers of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 			continue
 		}
 	}
 	err := setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
 	if err != nil {
-		log.Println("ERROR: Cpuset for the infracontainer of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted, because:" + err.Error())
+		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 		return
 	}
 	err = k8sclient.SetPodAnnotation(pod, resourceBaseName + "~1" + setterAnnotationSuffix, "true")
 	if err != nil {
-		log.Println("ERROR: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + "  annontation cannot update, because: " + err.Error())
+		log.Printf("ERROR: %s ID: %s  annontation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 	}
 }
 
@@ -197,12 +196,12 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
 	var cp checkpointFile
 	buf, err := ioutil.ReadFile(checkpointFileName)
 	if err != nil {
-		log.Println(fmt.Sprintf("Error reading file %s: Error: %v\n", checkpointFileName, err))
-		return cpuset.CPUSet{}, errors.New("Kubelet checkpoint file could not be accessed because:" + err.Error())
+		log.Printf("Error reading file %s: Error: %v", checkpointFileName, err)
+		return cpuset.CPUSet{}, fmt.Errorf("kubelet checkpoint file could not be accessed because: %s", err)
 	}
 
 	if err = json.Unmarshal(buf, &cp); err != nil {
-		log.Println("Error unmarshalling kubelet checkpoint file", err)
+		log.Printf("error unmarshalling kubelet checkpoint file: %s", err)
 		return cpuset.CPUSet{}, err
 	}
 
@@ -215,7 +214,7 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
 		}
 	}
 	if len(deviceIDs) == 0 {
-		log.Println("WARNING: Container: " + container.Name + " in Pod: " + podIDStr + " asked for exclusive CPUs, but were not allocated any! Cannot adjust its default cpuset")
+		log.Printf("WARNING: Container: %s in Pod: %s asked for exclusive CPUs, but were not allocated any! Cannot adjust its default cpuset", container.Name, podIDStr)
 		return cpuset.CPUSet{}, nil
 	}
 	return calculateFinalExclusiveSet(deviceIDs, pod, container)
@@ -255,7 +254,7 @@ func containerIDInPodStatus(podStatus v1.PodStatus, containerDirName string) boo
 func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset cpuset.CPUSet) (string, error) {
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
-		log.Println("WARNING: for some reason cpuset to set was quite empty for container:" + containerID + ".I left it untouched.")
+		log.Printf("WARNING: for some reason cpuset to set was quite empty for container: %s.I left it untouched.", containerID)
 		return "", nil
 	}
 	//According to K8s documentation CID is stored in "docker://<container_id>" format
@@ -269,7 +268,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		return nil
 	})
 	if pathToContainerCpusetFile == "" {
-		return "", errors.New("cpuset file does not exist for container:" + trimmedCid + " under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return "", fmt.Errorf("cpuset file does not exist for container: %s under the provided cgroupfs hierarchy: %s", trimmedCid, setHandler.cpusetRoot)
 	}
 	returnContainerPath := pathToContainerCpusetFile
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
@@ -280,14 +279,14 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		}
 		return nil
 	})
-	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
-		return "", errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
+		return "", fmt.Errorf("can't open cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
 	}
 	defer file.Close()
 	_, err = file.WriteString(cpuset.String())
 	if err != nil {
-		return "", errors.New("Can't modify cpuset file:" + pathToContainerCpusetFile + " for container:" + trimmedCid + " because:" + err.Error())
+		return "", fmt.Errorf("can't modify cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
 	}
 	return returnContainerPath, nil
 }
@@ -311,24 +310,24 @@ func (setHandler *SetHandler) applyCpusetToInfraContainer(podMeta metav1.ObjectM
 	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
-		log.Println("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container for " + podMeta.Name + " in namespace: " + podMeta.Namespace)
+		log.Printf("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container for %s in namespace: %s", podMeta.Name, podMeta.Namespace)
 		return nil
 	}
 	if pathToSearchContainer == "" {
-		return errors.New("container directory does not exists under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return fmt.Errorf("container directory does not exists under the provided cgroupfs hierarchy: %s", setHandler.cpusetRoot)
 	}
 	pathToContainerCpusetFile := getInfraContainerPath(podStatus, pathToSearchContainer)
 	if pathToContainerCpusetFile == "" {
-		return errors.New("cpuset file does not exist for infra container under the provided cgroupfs hierarchy:" + setHandler.cpusetRoot)
+		return fmt.Errorf("cpuset file does not exist for infra container under the provided cgroupfs hierarchy: %s", setHandler.cpusetRoot)
 	}
 	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
-		return errors.New("Can't open cpuset file:" + pathToContainerCpusetFile + " for infra container:" + filepath.Base(pathToContainerCpusetFile) + " because:" + err.Error())
+		return fmt.Errorf("can't open cpuset file: %s for infra container: %s because: %s", pathToContainerCpusetFile, filepath.Base(pathToContainerCpusetFile), err)
 	}
 	defer file.Close()
 	_, err = file.WriteString(cpuset.String())
 	if err != nil {
-		return errors.New("Can't modify cpuset file:" + pathToContainerCpusetFile + " for infra container:" + filepath.Base(pathToContainerCpusetFile) + " because:" + err.Error())
+		return fmt.Errorf("can't modify cpuset file: %s for infra container: %s because: %s", pathToContainerCpusetFile, filepath.Base(pathToContainerCpusetFile), err)
 	}
 	return nil
 }
