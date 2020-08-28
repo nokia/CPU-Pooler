@@ -1,7 +1,7 @@
 package controller_test
 
 import (
-	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -355,11 +355,12 @@ func readFakeCpusetFile(pod v1.Pod, tempDirPath string) ([]string, error) {
 	var readCpusets  []string
 
 	for _, cpusetPath := range podCpuSetPaths[pod.ObjectMeta.Name] {
-		fileContent, err := ioutil.ReadFile(tempDirPath + cpusetPath + "/cpuset.cpus")
-		readCpusets = append(readCpusets, string(fileContent))
+		cpusetFilePath := filepath.Join(tempDirPath, cpusetPath, "cpuset.cpus")
+		fileContent, err := ioutil.ReadFile(cpusetFilePath)
 		if err != nil {
-			return nil, errors.New("Can't read fake cpuset file:" + tempDirPath + cpusetPath + " in Pod: " + string(pod.ObjectMeta.UID) + " because:" + err.Error())
+			return nil, fmt.Errorf("can't read fake cpuset file: %s in Pod: %s because: %s", cpusetFilePath, pod.ObjectMeta.UID, err)
 		}
+		readCpusets = append(readCpusets, string(fileContent))
 	}
 	return readCpusets, nil
 }
