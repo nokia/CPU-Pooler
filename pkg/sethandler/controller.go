@@ -103,7 +103,10 @@ func (setHandler *SetHandler) PodAdded(pod v1.Pod) {
 	if !shouldPodBeHandled(pod) {
 		return
 	}
-	setHandler.adjustContainerSets(pod)
+	containersToBeSet := gatherAllContainers(pod)
+	if len(containersToBeSet) > 0 {
+			setHandler.adjustContainerSets(pod, containersToBeSet)
+	}
 }
 
 //PodChanged handles UPDATE operations
@@ -112,35 +115,62 @@ func (setHandler *SetHandler) PodChanged(oldPod, newPod v1.Pod) {
 	if !shouldPodBeHandled(newPod) {
 		return
 	}
-	setHandler.adjustContainerSets(newPod)
+	containersToBeSet := map[string]int{}
+	if newPod.ObjectMeta.Annotations[setterAnnotationKey] != "" {
+		containersToBeSet = determineContainersToBeSet(oldPod, newPod)
+	} else {
+		containersToBeSet = gatherAllContainers(newPod)
+	}
+	if len(containersToBeSet) > 0 {
+		setHandler.adjustContainerSets(newPod, containersToBeSet)
+	}
 }
 
 func shouldPodBeHandled(pod v1.Pod) bool {
 	setterNodeName := os.Getenv("NODE_NAME")
 	podNodeName := pod.Spec.NodeName
-
 	//Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
 	if setterNodeName == "" || podNodeName == "" || setterNodeName != podNodeName {
 		return false
 	}
-	//If the Pod is not running, its containers haven't been created yet - no cpuset cgroup is present to be adjusted by the CPUSetter
-	if pod.ObjectMeta.Annotations[setterAnnotationKey] != "" {
-		return false
-	}
-	if len(pod.Status.ContainerStatuses) == 0 {
-		return false
-	}
-	for _, containerStatus := range pod.Status.ContainerStatuses {
-		if containerStatus.ContainerID == "" {
-			return false
-		}
-	}
 	return true
 }
 
-func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod) {
+func determineContainersToBeSet(oldPod, newPod v1.Pod) map[string]int {
+	workingContainers := map[string]int{}
+	found := false
+	for _, newContainerStatus := range newPod.Status.ContainerStatuses {
+		found = false
+		for _, oldContainerStatus := range oldPod.Status.ContainerStatuses {
+			if oldContainerStatus.ContainerID == newContainerStatus.ContainerID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			workingContainers[newContainerStatus.Name] = 0
+		}
+	}
+	return workingContainers
+}
+
+func gatherAllContainers(pod v1.Pod) map[string]int {
+	workingContainers := map[string]int{}
+	for _, containerStatus := range pod.Status.ContainerStatuses {
+		if containerStatus.ContainerID == "" {
+			return map[string]int{}
+		}
+		workingContainers[containerStatus.Name] = 0
+	}
+	return workingContainers
+}
+
+func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet map[string]int) {
 	var pathToContainerCpusetFile string
 	for _, container := range pod.Spec.Containers {
+		if _, found := containersToBeSet[container.Name]; !found {
+			continue
+		}
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
 			log.Printf("ERROR: Cpuset for the containers of Pod: %s ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
