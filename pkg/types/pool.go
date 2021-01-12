@@ -13,27 +13,31 @@ import (
 )
 
 const (
-//SharedPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of shared type
+	//SharedPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of shared type
 	SharedPoolID = "shared"
-//ExclusivePoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of exclusive type
+	//ExclusivePoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of exclusive type
 	ExclusivePoolID = "exclusive"
-//DefaultPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of default type
+	//DefaultPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of default type
 	DefaultPoolID = "default"
+	//PoolConfigDir defines the pool configuration file location
+	PoolConfigDir = "/etc/cpu-pooler"
+	//SingleThreadHTPolicy is the constant for the single threaded value of the HT policy pool attribute. Only the physical thread is allocated for exclusive requests when this value is set
+	SingleThreadHTPolicy = "singleThreaded"
+	//MultiThreadHTPolicy is the constant for the multi threaded value of the HT policy pool attribute. All siblings are allocated together for exclusive requests when this value is set
+	MultiThreadHTPolicy = "multiThreaded"
 )
 
-var (
-//PoolConfigDir defines the pool configuration file location
-	PoolConfigDir = "/etc/cpu-pooler"
-)
 // Pool defines cpupool
 type Pool struct {
-	CPUs   cpuset.CPUSet
+	CPUset   cpuset.CPUSet
+	CPUStr   string `yaml:"cpus"`
+	HTPolicy string `yaml:"hyperThreadingPolicy"`
 }
 
 // PoolConfig defines pool configuration for a node
 type PoolConfig struct {
-	Pools        map[string]Pool
-	NodeSelector map[string]string
+	Pools        map[string]Pool   `yaml:"pools"`
+	NodeSelector map[string]string `yaml:"nodeSelector"`
 }
 
 //DeterminePoolType takes the name of CPU pool as defined in the CPU-Pooler ConfigMap, and returns the type of CPU pool it represents.
@@ -51,7 +55,7 @@ func DeterminePoolType(poolName string) string {
 //DeterminePoolConfig first interrogates the label set of the Node this process runs on.
 //It uses this information to select the specific PoolConfig file corresponding to the Node.
 //Returns the selected PoolConfig file, the name of the file, or an error if it was impossible to determine which config file is applicable.
-func DeterminePoolConfig() (PoolConfig,string,error) {
+func DeterminePoolConfig() (PoolConfig, string, error) {
 	nodeLabels, err := k8sclient.GetNodeLabels()
 	if err != nil {
 		return PoolConfig{}, "", fmt.Errorf("following error happend when trying to read K8s API server Node object: %s", err)
@@ -88,32 +92,28 @@ func readPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
 
 // ReadPoolConfigFile reads a pool configuration file
 func ReadPoolConfigFile(name string) (PoolConfig, error) {
-	var pools PoolConfig
-	var parsePools struct {
-		Pools        map[string]struct{
-				CPUStr string        `yaml:"cpus"`
-			}   `yaml:"pools"`
-		NodeSelector map[string]string `yaml:"nodeSelector"`
-	}
 	file, err := ioutil.ReadFile(name)
 	if err != nil {
 		return PoolConfig{}, fmt.Errorf("could not read poolconfig file: %s, because: %s", name, err)
 	}
-	err = yaml.Unmarshal([]byte(file), &parsePools)
+	var poolConfig PoolConfig
+	err = yaml.Unmarshal([]byte(file), &poolConfig)
 	if err != nil {
-		return PoolConfig{}, fmt.Errorf("poolconfig file could not be parsed because: %s", err)
+		return PoolConfig{}, fmt.Errorf("CPU pool config file could not be parsed because: %s", err)
 	}
-	pools.NodeSelector = parsePools.NodeSelector
-	pools.Pools = map[string]Pool{}
-	for pool := range parsePools.Pools {
-		temp := pools.Pools[pool]
-		temp.CPUs, err = cpuset.Parse(parsePools.Pools[pool].CPUStr)
+	for poolName, poolBody := range poolConfig.Pools {
+		tempPool := poolBody
+		tempPool.CPUset, err = cpuset.Parse(poolBody.CPUStr)
 		if err != nil {
 			return PoolConfig{}, fmt.Errorf("CPUs could not be parsed because: %s", err)
 		}
-		pools.Pools[pool] = temp
+		if poolBody.HTPolicy == "" {
+			tempPool.HTPolicy = SingleThreadHTPolicy
+		}
+		poolConfig.Pools[poolName] = tempPool
+
 	}
-	return pools, err
+	return poolConfig, err
 }
 
 //SelectPool returns the exact CPUSet belonging to either the exclusive, shared, or default pool of one PoolConfig object

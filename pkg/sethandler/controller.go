@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,10 +25,10 @@ import (
 )
 
 var (
-	resourceBaseName 		= "nokia.k8s.io"
-	processConfigKey 		= resourceBaseName + "/cpus"
+	resourceBaseName       = "nokia.k8s.io"
+	processConfigKey       = resourceBaseName + "/cpus"
 	setterAnnotationSuffix = "cpusets-configured"
-	setterAnnotationKey		= resourceBaseName + "/" + setterAnnotationSuffix
+	setterAnnotationKey    = resourceBaseName + "/" + setterAnnotationSuffix
 )
 
 type checkpointPodDevicesEntry struct {
@@ -105,7 +106,7 @@ func (setHandler *SetHandler) PodAdded(pod v1.Pod) {
 	}
 	containersToBeSet := gatherAllContainers(pod)
 	if len(containersToBeSet) > 0 {
-			setHandler.adjustContainerSets(pod, containersToBeSet)
+		setHandler.adjustContainerSets(pod, containersToBeSet)
 	}
 }
 
@@ -192,7 +193,7 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet 
 		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 		return
 	}
-	err = k8sclient.SetPodAnnotation(pod, resourceBaseName + "~1" + setterAnnotationSuffix, "true")
+	err = k8sclient.SetPodAnnotation(pod, resourceBaseName+"~1"+setterAnnotationSuffix, "true")
 	if err != nil {
 		log.Printf("ERROR: %s ID: %s  annontation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 	}
@@ -206,19 +207,22 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
 		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
-			sharedCPUSet = setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUs
+			sharedCPUSet = setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUset
 		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
 			exclusiveCPUSet, err = setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
 			if err != nil {
 				return cpuset.CPUSet{}, err
+			}
+			if setHandler.poolConfig.SelectPool(resNameAsString).HTPolicy == types.MultiThreadHTPolicy {
+				htMap := topology.GetHTTopology()
+				exclusiveCPUSet = topology.AddHTSiblingsToCPUSet(exclusiveCPUSet, htMap)
 			}
 		}
 	}
 	if !sharedCPUSet.IsEmpty() || !exclusiveCPUSet.IsEmpty() {
 		return sharedCPUSet.Union(exclusiveCPUSet), nil
 	}
-
-	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs, nil
+	return setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUset, nil
 }
 
 func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
@@ -229,12 +233,10 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
 		log.Printf("Error reading file %s: Error: %v", checkpointFileName, err)
 		return cpuset.CPUSet{}, fmt.Errorf("kubelet checkpoint file could not be accessed because: %s", err)
 	}
-
 	if err = json.Unmarshal(buf, &cp); err != nil {
 		log.Printf("error unmarshalling kubelet checkpoint file: %s", err)
 		return cpuset.CPUSet{}, err
 	}
-
 	podIDStr := string(pod.ObjectMeta.UID)
 	deviceIDs := []string{}
 	for _, entry := range cp.Data.PodDeviceEntries {
@@ -287,7 +289,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		log.Printf("WARNING: for some reason cpuset to set was quite empty for container: %s.I left it untouched.", containerID)
 		return "", nil
 	}
-	//According to K8s documentation CID is stored in "docker://<container_id>" format
+	//According to K8s documentation CID is stored in "docker://<container_id>" format when dockershim is configured for CRE
 	trimmedCid := strings.TrimPrefix(containerID, "docker://")
 	var pathToContainerCpusetFile string
 	filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
@@ -309,7 +311,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		}
 		return nil
 	})
-	file, err := os.OpenFile(pathToContainerCpusetFile + "/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
+	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return "", fmt.Errorf("can't open cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
 	}
@@ -337,7 +339,7 @@ func getInfraContainerPath(podStatus v1.PodStatus, searchPath string) string {
 }
 
 func (setHandler *SetHandler) applyCpusetToInfraContainer(podMeta metav1.ObjectMeta, podStatus v1.PodStatus, pathToSearchContainer string) error {
-	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUs
+	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUset
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
 		log.Printf("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container for %s in namespace: %s", podMeta.Name, podMeta.Namespace)

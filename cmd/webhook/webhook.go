@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	//MixedContainerSafetyMarginRatio is the percentage we allocate for hybrid (shared+exclusive) containers as a CFS quota on top of their original request
 	MixedContainerSafetyMarginRatio = 20
 	QuotaAll                        = "all"
 	QuotaShared                     = "shared"
