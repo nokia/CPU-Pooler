@@ -22,7 +22,9 @@ import (
 )
 
 const (
-	mixedContainerSafetyMarginRatio = 20
+	MixedContainerSafetyMarginRatio = 20
+	QuotaAll                        = "all"
+	QuotaShared                     = "shared"
 )
 
 var (
@@ -31,6 +33,9 @@ var (
 	resourceBaseName   = "nokia.k8s.io"
 	annotationKey      = "patched"
 	processStarterPath = "/opt/bin/process-starter"
+	certFile           string
+	keyFile            string
+	cfsQuotas          string
 )
 
 type containerPoolRequests struct {
@@ -119,18 +124,18 @@ func validateAnnotation(poolRequests poolRequestMap, cpuAnnotation types.CPUAnno
 }
 
 func setRequestLimit(requests containerPoolRequests, patchList []patch, contID int, contSpec *corev1.Container) []patch {
-	totalCFSLimit := requests.sharedCPURequests + 1000*requests.exclusiveCPURequests
-	if requests.exclusiveCPURequests > 0 {
+	totalCFSLimit := requests.sharedCPURequests
+	if requests.exclusiveCPURequests > 0 && cfsQuotas == QuotaAll {
 		if requests.sharedCPURequests > 0 {
 			//This is the case when both shared, and exclusive pool resources are requested by the same container
 			//To avoid artificially throttling the exclusive user threads when the shared threads are overstepping their boundaries,
 			// we add a 20% safety margin to the overall CFS quota governing the usage of the whole cpuset.
 			//As the exclusive cores utiliziation is capped at 100% of physical capacity,
 			// this margin is only utilized when shared threads would throttle the exclusive ones.
-			totalCFSLimit += mixedContainerSafetyMarginRatio * requests.sharedCPURequests / 100
+			totalCFSLimit += 1000*requests.exclusiveCPURequests + MixedContainerSafetyMarginRatio*requests.sharedCPURequests/100
 		} else {
-			//When only exclusive CPUs are requested we pad the limits with an arbitrary to avoid accidentally throttling sensitive workloads
-			totalCFSLimit += 100
+			//When only exclusive CPUs are requested we pad the limits with an arbitrary margin to avoid accidentally throttling sensitive workloads
+			totalCFSLimit += 1000*requests.exclusiveCPURequests + 100
 		}
 	}
 	if totalCFSLimit > 0 {
@@ -419,9 +424,6 @@ func serveMutatePod(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	var certFile string
-	var keyFile string
-
 	flag.StringVar(&certFile, "tls-cert-file", certFile, ""+
 		"File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated "+
 		"after server cert).")
@@ -429,7 +431,11 @@ func main() {
 		"File containing the default x509 private key matching --tls-cert-file.")
 	flag.StringVar(&processStarterPath, "process-starter-path", processStarterPath, ""+
 		"Path to process-starter binary file. Optional parameter, default path is /opt/bin/process-starter.")
-
+	flag.StringVar(&cfsQuotas, "cfs-quotas", QuotaAll,
+		"Controls if CPU-Pooler automatically provisions CFS quotas for its managed containers.\n"+
+			"Possible values are:\n"+
+			"'all'    - CPU-Pooler provisions CFS quotas for all containers\n"+
+			"'shared' - CPU-Pooler doesn't provision quotas for containers using exclusive pools")
 	flag.Parse()
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
