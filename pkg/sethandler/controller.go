@@ -193,9 +193,9 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet 
 		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 		return
 	}
-	err = k8sclient.SetPodAnnotation(pod, resourceBaseName+"~1"+setterAnnotationSuffix, "true")
+	err = k8sclient.SetPodAnnotation(pod, setterAnnotationKey, "true")
 	if err != nil {
-		log.Printf("ERROR: %s ID: %s  annontation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
+		log.Printf("ERROR: %s ID: %s  annotation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 	}
 }
 

@@ -11,10 +11,12 @@ import (
 	"os"
 )
 
-type patch struct {
-	Op    string          `json:"op"`
-	Path  string          `json:"path"`
-	Value json.RawMessage `json:"value"`
+type meta struct {
+    Annotations map[string]json.RawMessage `json:"annotations"`
+}
+
+type update struct {
+    Metadata meta `json:"metadata"`
 }
 
 // GetNodeLabels returns node labels.
@@ -53,15 +55,15 @@ func SetPodAnnotation(pod v1.Pod, key string, value string) error {
 	if err != nil {
 		return err
 	}
-	patchData := make([]patch, 1)
-	patchData[0].Op = "add"
-	patchData[0].Path = "/metadata/annotations/" + key
-	newAnnotation := `"` + value + `"`
-	patchData[0].Value = json.RawMessage(newAnnotation)
-	jsonData, err := json.Marshal(patchData)
+
+	merge := update{}
+	merge.Metadata.Annotations = make(map[string]json.RawMessage)
+	merge.Metadata.Annotations[key] = json.RawMessage(`"` + value + `"`)
+
+	jsonData, err := json.Marshal(merge)
 	if err != nil {
 		return err
 	}
-	_, err = clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Patch(context.TODO(), pod.ObjectMeta.Name, types.JSONPatchType, jsonData, metav1.PatchOptions{})
+	_, err = clientset.CoreV1().Pods(pod.ObjectMeta.Namespace).Patch(context.TODO(), pod.ObjectMeta.Name, types.MergePatchType, jsonData, metav1.PatchOptions{})
 	return err
 }
