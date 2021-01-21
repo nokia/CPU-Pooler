@@ -134,6 +134,12 @@ func shouldPodBeHandled(pod v1.Pod) bool {
 	if setterNodeName == "" || podNodeName == "" || setterNodeName != podNodeName {
 		return false
 	}
+
+	// Pod has exited/completed and all containers have stopped
+	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+		return false
+	}
+
 	return true
 }
 
