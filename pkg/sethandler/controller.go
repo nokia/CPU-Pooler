@@ -213,7 +213,9 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 			if err != nil {
 				return cpuset.CPUSet{}, err
 			}
-			if setHandler.poolConfig.SelectPool(resNameAsString).HTPolicy == types.MultiThreadHTPolicy {
+			fullResName := strings.Split(resNameAsString, "/")
+			exclusivePoolName := fullResName[1]
+			if setHandler.poolConfig.SelectPool(exclusivePoolName).HTPolicy == types.MultiThreadHTPolicy {
 				htMap := topology.GetHTTopology()
 				exclusiveCPUSet = topology.AddHTSiblingsToCPUSet(exclusiveCPUSet, htMap)
 			}

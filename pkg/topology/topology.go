@@ -41,7 +41,7 @@ func AddHTSiblingsToCPUSet(exclusiveCPUSet cpuset.CPUSet, coreMap map[int]string
 				log.Println("ERROR: could not parse the HT siblings list of assigned exclusive cores because:" + err.Error())
 				return exclusiveCPUSet
 			}
-			tempSet.Union(siblingSet)
+			tempSet = tempSet.Union(siblingSet)
 		}
 	}
 	return tempSet

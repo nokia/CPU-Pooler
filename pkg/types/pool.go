@@ -2,14 +2,13 @@ package types
 
 import (
 	"fmt"
-	"io/ioutil"
-	"path/filepath"
-	"strings"
-
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+	"path/filepath"
+	"strings"
 )
 
 const (
@@ -19,12 +18,15 @@ const (
 	ExclusivePoolID = "exclusive"
 	//DefaultPoolID is the constant prefix in the name of the CPU pool. It is used to signal that a CPU pool is of default type
 	DefaultPoolID = "default"
-	//PoolConfigDir defines the pool configuration file location
-	PoolConfigDir = "/etc/cpu-pooler"
 	//SingleThreadHTPolicy is the constant for the single threaded value of the HT policy pool attribute. Only the physical thread is allocated for exclusive requests when this value is set
 	SingleThreadHTPolicy = "singleThreaded"
 	//MultiThreadHTPolicy is the constant for the multi threaded value of the HT policy pool attribute. All siblings are allocated together for exclusive requests when this value is set
 	MultiThreadHTPolicy = "multiThreaded"
+)
+
+var (
+	//PoolConfigDir defines the pool configuration file location
+	PoolConfigDir = "/etc/cpu-pooler"
 )
 
 // Pool defines cpupool
@@ -111,7 +113,6 @@ func ReadPoolConfigFile(name string) (PoolConfig, error) {
 			tempPool.HTPolicy = SingleThreadHTPolicy
 		}
 		poolConfig.Pools[poolName] = tempPool
-
 	}
 	return poolConfig, err
 }

@@ -6,26 +6,27 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/pkg/types"
+	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
 const (
 	//MixedContainerSafetyMarginRatio is the percentage we allocate for hybrid (shared+exclusive) containers as a CFS quota on top of their original request
 	MixedContainerSafetyMarginRatio = 20
-	QuotaAll                        = "all"
-	QuotaShared                     = "shared"
+	//QuotaAll is one of the possible values of the webhook cfs-quotas parameter. All means CFS quotas should be automatically provisioned for every container
+	QuotaAll = "all"
+	//QuotaShared is one of the possible values of the webhook cfs-quotas parameter. Shared means CFS quotas should be automatically provisioned only for shared user containers
+	QuotaShared = "shared"
 )
 
 var (

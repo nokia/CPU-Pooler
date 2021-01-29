@@ -58,6 +58,7 @@ var ts = tmpSysFs{
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0019/cont19",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0021/cont21",
 		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0022/cont22",
+		"/sys/fs/cgroup/cpuset/kubepods/besteffort/pod0023/cont23",
 	},
 	fileList: map[string][]byte{
 		"cpuset.cpus": []byte("E"),
@@ -116,7 +117,8 @@ func CreateCheckpointFile() error {
 			{"PodUID":"pod0016","ContainerName":"chckpnt_no_device_no_res"},
 			{"PodUID":"pod0019","ContainerName":"bad_deviceID_format","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["a","b","c"]},
 			{"PodUID":"pod0020","ContainerName":"no_cpuset_file","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]},
-			{"PodUID":"pod0021","ContainerName":"naming_mismatch","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]}],
+			{"PodUID":"pod0021","ContainerName":"naming_mismatch","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["3","4","7"]},
+      {"PodUID":"pod0023","ContainerName":"cont_exc_ht","ResourceName":"nokia.k8s.io/exclusive_caas","DeviceIDs":["22","35"]}],
 			"RegisteredDevices":{"nokia.k8s.io/default":["0-2"],"nokia.k8s.io/exclusive_caas":["3","4","5","6","7","8","12","13","14","16"],"nokia.k8s.io/shared_caas":["5889","74","97","324","383","951"]}},
 			"Checksum":403603645}`
 	)
