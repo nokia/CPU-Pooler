@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o cpu
 FROM alpine:latest
 
 ARG PLUGIN_PATH=github.com/nokia/CPU-Pooler
+RUN apk add util-linux
 COPY --from=build-env /go/src/${PLUGIN_PATH}/cpusetter /
 
 ENTRYPOINT ["/cpusetter"]

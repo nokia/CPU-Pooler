@@ -8,8 +8,10 @@ data:
     pools: 
       exclusive-pool:
         cpus : "4,5"
+        hyperThreadingPolicy: singleThreaded
       exclusive-pool-2:
         cpus : "2,3"
+        hyperThreadingPolicy: multiThreaded
       shared-pool:
         cpus : "1"
       default:
