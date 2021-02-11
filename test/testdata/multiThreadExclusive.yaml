@@ -1,0 +1,11 @@
+resourceBaseName: "nokia.k8s.io"
+nodeSelector:
+  nodename: caas_master1
+pools:
+  default:
+    cpus: 0-8
+  exclusive_caas:
+    cpus: 21-39
+    hyperThreadingPolicy: multiThreaded
+  shared_caas:
+    cpus: 9-20

@@ -14,14 +14,25 @@ Containers content with some, limited level of sharing, but still appreciating b
 The default pool is synonymous to the Kubelet managed, by default existing shared pool. Worth noting that the shared and default pool's CPU sets, and characteristics are distinct.
 By supporting the "original" CPU allocation method in parallel with the enhanced, 3rd party containers totally content with the default CPU management policy of Kubernetes can be instantiated on a CPU-Pooler upgraded system without any configuration changes.
 
-## Topology awareness (NUMA)
-CPU-Pooler is officially topology aware starting with the 0.4.0 release!
+## Topology awareness
+### NUMA alignment
+CPU-Pooler is officially NUMA/socket aware starting with the 0.4.0 release!
 
 Moreover, unlike other external managers CPU-Pooler natively integrates into Kubernetes' own Topology Manager. CPU-Pooler reports the NUMA Node ID of all the CPUs belonging to an exclusive CPU pool to the upstream Topology Manager.
 This means whenever a Pod requests resources from Kubernetes where topology matters -e.g. SR-IOV virtual functions, exclusive CPUs, GPUs etc.- Kubernetes will automatically assign resources with their NUMA node aligned - CPU-Pooler managed cores included!
 
 This feature is automatic, therefore it does not require any configuration from the user.
 For it to work though CPU-Pooler's version must be at least 0.4.0, while Kubernetes must be at least 1.17.X.
+
+### Hyperthreading support
+CPU-Pooler is able to recognize when it is deployed on a hyperthreading enabled node, and supports different thread allocation policies for exclusive CPU pools.
+
+These policies are controlled by the "hyperThreadingPolicy" attribute of an exclusive pool. The following two, guaranteed policies are supported currently:
+"singleThreaded" (default): when a physical core is assigned to a workload CPU-Pooler only includes the ID of the assigned core into the container's cpuset cgroup, and leaves all possible siblings un-assigned
+"multiThreaded": when this policy is set Pooler automatically discovers all siblings of an assigned core, and allocates them together to the requesting container.
+
+CPU-Pooler only implements guaranteed policies, meaning that siblings will never be accidentally assigned to neighbour containers.
+Note: for HT support to work as intended you must only list phsyical core IDs in exclusive pool definitions. CPU-Pooler will automatically discover the siblings on its own
 
 ## Components of the CPU-Pooler project
 The CPU-Pooler project contains 4 core components:
@@ -45,9 +56,9 @@ As CPUSetter is triggered by all Pods on all Nodes, we can be sure no containers
 
 ## Using the allocated CPUs
 
-By default CPU-Pooler only provisions the appropriate cpuset for a container based on its resource request, but does not intervene with  how threads inside the container are scheduled between the allowed vCPUs.
+By default CPU-Pooler only provisions the appropriate cpuset for a container based on its resource request, but does not intervene with how threads inside the container are scheduled between the allowed vCPUs.
 
-For users who require explicitly pinning application process / thread(s) to allocated CPUs for some reason, the following options are available:
+For users who require explicitly pinning application process / thread(s) to the subset of the allocated CPUs for some reason, the following options are available:
 
 **pod annotation**
 
@@ -60,7 +71,7 @@ CPU Pooler sets allocated exclusive CPUs to environment variable `EXCLUSIVE_CPUS
 
 
 In order to avoid possible race conditions occuring due to multiple processes trying to set affinity at the same time (or application trying to set it too early); CPU-Pooler can guarantee that the container's entrypoint is only executed once the proper CPU configuration has been provisioned.
-This is achieved by the `process-starter` component under some conditions.
+This is achieved by the `process-starter` component under the following pre-conditions.
 In order for this functionality to work as intended the `command` property must be configured in container's pod manifest. If the `command` is not configured, the `process-starer` won't be used because it is not known which process needs to be started in the container.
 In such cases we fall back to the native Linux thread scheduling mechanism, but depending on user activity this might result in exotic race conditions occuring.
 
@@ -86,24 +97,36 @@ data:
   poolconfig-<name>.yaml: |
     pools:
       exclusive_<poolname1>:
-        cpus : "<list of cpus"
+        cpus : "<list of physical CPU core IDs>"
+        hyperThreadingPolicy: singleThreaded
       exclusive_<poolname2>:
-        cpus : "<list of cpus"
+        cpus : "<list of physical CPU core IDs>"
+        hyperThreadingPolicy: multiThreaded
       shared_<poolname3>:
-        cpus : "<list of cpus>"
+        cpus : "<list of CPU thread IDs>"
       default:
-        cpus : "<list of cpus>"
+        cpus : "<list of CPU thread IDs>"
       nodeSelector:
         <key> : <value>
 ```
 The poolconfig-<name>.yaml file must exist in the data section.
-The cpu pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
-Pool name from the config will be the resource in the fully qualified resource name (`nokia.k8s.io/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive cpu pool or 'shared' for shared cpu pool.
+The CPU pools are defined in poolconfig-<name>.yaml files. There must be at least one poolconfig-<name>.yaml file in the data section.
+Pool name from the config will be the resource in the fully qualified resource name (`nokia.k8s.io/<pool name>`). The pool name must have pool type prefix - 'exclusive' for exclusive CPU pool or 'shared' for shared CPU pool.
 A CPU pool not having either of these special prefixes is considered as the cluster-wide 'default' CPU pool, and as such, CPU cores belonging to this pool will not be advertised to the Device Manager as schedulable resources.
+
+
+"cpus" attribute controls which CPU cores belong to this pool. Standard Linux notation including "," and "-" characters is accepted.
+For exclusive pools only configure physical CPU core IDs.
+For shared and default pools list all the thread IDs you want to be included in the pool (i.e. physical and HT sibling IDs both).
+
+
+"hyperThreadingPolicy" controls whether exclusive CPU cores are allocated alone ("singleThreaded"), or in pairs ("multiThreaded").
+
+
 The nodeSelector is used to tell which node the pool configuration file belongs to. CPU pooler and CPUSetter components both read the node labels and select the config that matches the value of nodeSelector.
 
-In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu). Nodes for the pool configurations are selected by `nodeType` label.
 
+In the deployment directory there is a sample pool config with two exclusive pools (both have two cpus) and one shared pool (one cpu). Nodes for the pool configurations are selected by `nodeType` label.
 Please note: currently only one shared pool is supported per Node!
 ### Pod spec
 

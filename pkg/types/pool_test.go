@@ -6,7 +6,6 @@ import (
 
 func init() {
 	PoolConfigDir = "../../test/testdata/cpu-pooler"
-
 }
 
 func TestReadPoolConfig(t *testing.T) {
@@ -24,6 +23,5 @@ func TestReadPoolConfig(t *testing.T) {
 		}
 	} else {
 		t.Error("Nodetype not found")
-
 	}
 }
