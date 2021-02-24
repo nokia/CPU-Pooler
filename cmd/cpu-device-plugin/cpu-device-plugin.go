@@ -1,10 +1,12 @@
 package main
 
 import (
+"log"
 	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/golang/glog"
+  "github.com/nokia/CPU-Pooler/pkg/checkpoint"
 	"github.com/nokia/CPU-Pooler/pkg/topology"
 	"github.com/nokia/CPU-Pooler/pkg/types"
 	"golang.org/x/net/context"
@@ -22,7 +24,6 @@ import (
 )
 
 var (
-	resourceBaseName = "nokia.k8s.io"
 	cdms             []*cpuDeviceManager
 )
 
@@ -123,6 +124,10 @@ func (cdm *cpuDeviceManager) ListAndWatch(e *pluginapi.Empty, stream pluginapi.D
 
 func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	resp := new(pluginapi.AllocateResponse)
+  err := checkpoint.WhoGotThisDevice(rqt.ContainerRequests[0].DevicesIDs[0])
+  if err != nil {
+    log.Println("LOFASZ:" + err.Error())
+  }
 	for _, container := range rqt.ContainerRequests {
 		envmap := make(map[string]string)
 		cpusAllocated, _ := cpuset.Parse("")
@@ -141,7 +146,6 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 		containerResp := new(pluginapi.ContainerAllocateResponse)
 		glog.Infof("CPUs allocated: %s: Num of CPUs %s", cpusAllocated.String(),
 			strconv.Itoa(cpusAllocated.Size()))
-
 		containerResp.Envs = envmap
 		resp.ContainerResponses = append(resp.ContainerResponses, containerResp)
 	}
@@ -220,7 +224,7 @@ func createCDMs(poolConf types.PoolConfig, sharedCPUs string) error {
 			glog.Errorf("cpuDeviceManager.Start() failed: %v", err)
 			break
 		}
-		resourceName := resourceBaseName + "/" + poolName
+		resourceName := types.PoolerAnnotationPrefix + "/" + poolName
 		err := cdm.Register(path.Join(pluginapi.DevicePluginPath, "kubelet.sock"), resourceName)
 		if err != nil {
 			// Stop server

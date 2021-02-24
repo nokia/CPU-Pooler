@@ -24,11 +24,9 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
-var (
-	resourceBaseName       = "nokia.k8s.io"
-	processConfigKey       = resourceBaseName + "/cpus"
+const (
 	setterAnnotationSuffix = "cpusets-configured"
-	setterAnnotationKey    = resourceBaseName + "/" + setterAnnotationSuffix
+	setterAnnotationKey    = types.PoolerAnnotationPrefix + "/" + setterAnnotationSuffix
 )
 
 type checkpointPodDevicesEntry struct {
@@ -193,7 +191,7 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet 
 		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 		return
 	}
-	err = k8sclient.SetPodAnnotation(pod, resourceBaseName+"~1"+setterAnnotationSuffix, "true")
+	err = k8sclient.SetPodAnnotation(pod, types.PoolerAnnotationPrefix +"~1"+setterAnnotationSuffix, "true")
 	if err != nil {
 		log.Printf("ERROR: %s ID: %s  annontation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 	}
@@ -206,16 +204,17 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 	)
 	for resourceName := range container.Resources.Requests {
 		resNameAsString := string(resourceName)
-		if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.SharedPoolID) {
+		if strings.Contains(resNameAsString, types.PoolerAnnotationPrefix) && strings.Contains(resNameAsString, types.SharedPoolID) {
 			sharedCPUSet = setHandler.poolConfig.SelectPool(types.SharedPoolID).CPUset
-		} else if strings.Contains(resNameAsString, resourceBaseName) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
+		} else if strings.Contains(resNameAsString, types.PoolerAnnotationPrefix) && strings.Contains(resNameAsString, types.ExclusivePoolID) {
 			exclusiveCPUSet, err = setHandler.getListOfAllocatedExclusiveCpus(resNameAsString, pod, container)
 			if err != nil {
 				return cpuset.CPUSet{}, err
 			}
 			fullResName := strings.Split(resNameAsString, "/")
 			exclusivePoolName := fullResName[1]
-			if setHandler.poolConfig.SelectPool(exclusivePoolName).HTPolicy == types.MultiThreadHTPolicy {
+			if setHandler.poolConfig.SelectPool(exclusivePoolName).HTPolicy == types.MultiThreadHTPolicy ||
+         topology.GetPodHTPreference(pod) == types.MultiThreadHTPolicy {
 				htMap := topology.GetHTTopology()
 				exclusiveCPUSet = topology.AddHTSiblingsToCPUSet(exclusiveCPUSet, htMap)
 			}

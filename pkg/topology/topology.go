@@ -2,11 +2,17 @@ package topology
 
 import (
 	"bytes"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os/exec"
 	"strconv"
 	"strings"
+  "github.com/nokia/CPU-Pooler/pkg/types"
+  "k8s.io/api/core/v1"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+)
+
+const (
+  htPolicyAnnotation = types.PoolerAnnotationPrefix + "/hyperThreadingPolicy"
 )
 
 //GetNodeTopology inspects the node's CPU architecture with lscpu, and returns a map of coreID-NUMA node ID associations
@@ -45,6 +51,14 @@ func AddHTSiblingsToCPUSet(exclusiveCPUSet cpuset.CPUSet, coreMap map[int]string
 		}
 	}
 	return tempSet
+}
+
+//GetPodHTPreference inspects if the K8s Pod has a specific hyperthreading policy preference set, and returns it to the caller
+func GetPodHTPreference(pod v1.Pod) string {
+  if pod.ObjectMeta.Annotations[htPolicyAnnotation] == types.MultiThreadHTPolicy {
+    return types.MultiThreadHTPolicy
+  }
+  return types.SingleThreadHTPolicy
 }
 
 func listAndParseCores(attribute string) map[int]int {

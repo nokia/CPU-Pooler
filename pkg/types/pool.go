@@ -2,13 +2,13 @@ package types
 
 import (
 	"fmt"
-	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"path/filepath"
 	"strings"
+  "github.com/golang/glog"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+  "k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 const (
@@ -22,6 +22,8 @@ const (
 	SingleThreadHTPolicy = "singleThreaded"
 	//MultiThreadHTPolicy is the constant for the multi threaded value of the HT policy pool attribute. All siblings are allocated together for exclusive requests when this value is set
 	MultiThreadHTPolicy = "multiThreaded"
+  //PoolerAnnotationPrefix is the API prefix used to differentiate and recognize all CPU-Pooler specific dynamic configuration options added to the core Pod API
+  PoolerAnnotationPrefix = "nokia.k8s.io"
 )
 
 var (
