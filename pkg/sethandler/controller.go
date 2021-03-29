@@ -167,7 +167,10 @@ func gatherAllContainers(pod v1.Pod) map[string]int {
 }
 
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet map[string]int) {
-	var pathToContainerCpusetFile string
+	var (
+		pathToContainerCpusetFile string
+		err error
+	)
 	for _, container := range pod.Spec.Containers {
 		if _, found := containersToBeSet[container.Name]; !found {
 			continue
@@ -294,25 +297,37 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 	//According to K8s documentation CID is stored in "docker://<container_id>" format when dockershim is configured for CRE
 	trimmedCid := strings.TrimPrefix(containerID, "docker://")
 	var pathToContainerCpusetFile string
-	filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
+	err := filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if strings.Contains(path, trimmedCid) {
 			pathToContainerCpusetFile = path
 			return filepath.SkipDir
 		}
 		return nil
 	})
+	if err != nil {
+		return "", fmt.Errorf("%s cpuset path error: %s", trimmedCid, err.Error())
+	}
 	if pathToContainerCpusetFile == "" {
 		return "", fmt.Errorf("cpuset file does not exist for container: %s under the provided cgroupfs hierarchy: %s", trimmedCid, setHandler.cpusetRoot)
 	}
 	returnContainerPath := pathToContainerCpusetFile
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
 	//Find child cpuset if it exists (kube-proxy)
-	filepath.Walk(pathToContainerCpusetFile, func(path string, f os.FileInfo, err error) error {
+	err = filepath.Walk(pathToContainerCpusetFile, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if f.IsDir() {
 			pathToContainerCpusetFile = path
 		}
 		return nil
 	})
+	if err != nil {
+		return "", fmt.Errorf("%s child cpuset path error: %s", trimmedCid, err.Error())
+	}
 	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
 	if err != nil {
 		return "", fmt.Errorf("can't open cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
