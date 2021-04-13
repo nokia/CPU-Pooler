@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 )
 
 var (
@@ -16,12 +17,27 @@ var (
 	cpusetRoot     string
 )
 
+const (
+	MaxRetryCount = 100
+	RetryInterval = 100
+)
+
 func main() {
+	var (
+		poolConf types.PoolConfig
+		err      error
+	)
 	flag.Parse()
 	if poolConfigPath == "" || cpusetRoot == "" {
 		log.Fatal("ERROR: Mandatory command-line arguments poolconfigs and cpusetroot were not provided!")
 	}
-	poolConf, _, err := types.DeterminePoolConfig()
+	for i := 0; i < MaxRetryCount; i++ {
+		poolConf, _, err = types.DeterminePoolConfig()
+		if err == nil {
+			break
+		}
+		time.Sleep(RetryInterval * time.Millisecond)
+	}
 	if err != nil {
 		log.Fatal("ERROR: Could not read CPU pool configuration files because: " + err.Error() + ", exiting!")
 	}

@@ -31,6 +31,11 @@ var (
 	setterAnnotationKey    = resourceBaseName + "/" + setterAnnotationSuffix
 )
 
+const (
+  MaxRetryCount = 100
+  RetryInterval = 100
+)
+
 type checkpointPodDevicesEntry struct {
 	PodUID        string
 	ContainerName string
@@ -106,7 +111,7 @@ func (setHandler *SetHandler) PodAdded(pod v1.Pod) {
 	}
 	containersToBeSet := gatherAllContainers(pod)
 	if len(containersToBeSet) > 0 {
-		setHandler.adjustContainerSets(pod, containersToBeSet)
+		go setHandler.adjustContainerSets(pod, containersToBeSet)
 	}
 }
 
@@ -123,7 +128,7 @@ func (setHandler *SetHandler) PodChanged(oldPod, newPod v1.Pod) {
 		containersToBeSet = gatherAllContainers(newPod)
 	}
 	if len(containersToBeSet) > 0 {
-		setHandler.adjustContainerSets(newPod, containersToBeSet)
+		go setHandler.adjustContainerSets(newPod, containersToBeSet)
 	}
 }
 
@@ -185,18 +190,36 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet 
 			log.Printf("ERROR: Cannot determine container id for %s from Pod: %s ID: %s", container.Name, pod.ObjectMeta.Name, pod.ObjectMeta.UID)
 			return
 		}
-		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
+		for i := 0; i < MaxRetryCount; i++ {
+			pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
+			if err == nil {
+      	break
+			}
+    	time.Sleep(RetryInterval * time.Millisecond)
+		}
 		if err != nil {
 			log.Printf("ERROR: Cpuset for the containers of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
-			continue
+			return
 		}
 	}
-	err := setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
+	for i := 0; i < MaxRetryCount; i++ {
+		err = setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
+		if err == nil {
+			break
+		}
+		time.Sleep(RetryInterval * time.Millisecond)
+	}
 	if err != nil {
 		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 		return
 	}
-	err = k8sclient.SetPodAnnotation(pod, resourceBaseName+"~1"+setterAnnotationSuffix, "true")
+	for i := 0; i < MaxRetryCount; i++ {
+		err = k8sclient.SetPodAnnotation(pod, resourceBaseName+"~1"+setterAnnotationSuffix, "true")
+		if err == nil {
+			break
+		}
+		time.Sleep(RetryInterval * time.Millisecond)
+	}
 	if err != nil {
 		log.Printf("ERROR: %s ID: %s  annontation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
 	}

@@ -3,14 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/pkg/topology"
-	"github.com/nokia/CPU-Pooler/pkg/types"
-	"golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
-	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"net"
 	"os"
 	"os/signal"
@@ -19,11 +11,25 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/golang/glog"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
+	"github.com/nokia/CPU-Pooler/pkg/types"
+	"golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 var (
 	resourceBaseName = "nokia.k8s.io"
 	cdms             []*cpuDeviceManager
+)
+
+const (
+	MaxRetryCount = 100
+	RetryInterval = 100
 )
 
 type cpuDeviceManager struct {
@@ -234,6 +240,10 @@ func createCDMs(poolConf types.PoolConfig, sharedCPUs string) error {
 }
 
 func createPluginsForPools() error {
+	var (
+		poolConf types.PoolConfig
+		err      error
+	)
 	files, err := filepath.Glob(filepath.Join(pluginapi.DevicePluginPath, "cpudp*"))
 	if err != nil {
 		glog.Fatal(err)
@@ -243,7 +253,13 @@ func createPluginsForPools() error {
 			glog.Fatal(err)
 		}
 	}
-	poolConf, _, err := types.DeterminePoolConfig()
+	for i := 0; i < MaxRetryCount; i++ {
+		poolConf, _, err = types.DeterminePoolConfig()
+		if err == nil {
+			break
+		}
+		time.Sleep(RetryInterval * time.Millisecond)
+	}
 	if err != nil {
 		glog.Fatal(err)
 	}
