@@ -37,7 +37,7 @@ openssl req -out server.csr -new -newkey rsa:2048  -nodes -keyout server-key.pem
 
 
 cat <<EOF | kubectl create -f -
-apiVersion: certificates.k8s.io/v1
+apiVersion: certificates.k8s.io/v1beta1
 kind: CertificateSigningRequest
 metadata:
   name: ${service}.${namespace}
@@ -49,7 +49,6 @@ spec:
   - digital signature
   - key encipherment
   - server auth
-  signerName: kubernetes.io/kubelet-serving
 EOF
 
 
@@ -68,4 +67,3 @@ kubectl create secret generic ${secret} -n ${namespace}\
         --from-file=cert.pem=server.crt
 
 rm -f server.crt server-key.pem server.csr openssl.cnf
-
