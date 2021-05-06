@@ -32,7 +32,7 @@ These policies are controlled by the "hyperThreadingPolicy" attribute of an excl
 "multiThreaded": when this policy is set Pooler automatically discovers all siblings of an assigned core, and allocates them together to the requesting container.
 
 CPU-Pooler only implements guaranteed policies, meaning that siblings will never be accidentally assigned to neighbour containers.
-Note: for HT support to work as intended you must only list phsyical core IDs in exclusive pool definitions. CPU-Pooler will automatically discover the siblings on its own
+Note: for HT support to work as intended you must only list phsyical core IDs in exclusive pool definitions. CPU-Pooler will automatically discover the siblings on its own.
 
 ## Components of the CPU-Pooler project
 The CPU-Pooler project contains 4 core components:
@@ -51,7 +51,7 @@ The process-starter binary has to be installed to host file system in `/opt/bin`
 
 Lastly, the CPUSetter sub-component implements total physical separation of containers via Linux cpusets. This Informer constantly watches the Pod API of Kubernetes, and is triggered whenever a Pod is created, or changes its state(e.g. restarted etc.)
 CPUSetter first calculates what is the appropriate cpuset for the container: the allocated CPUs in case of exclusive, the shared pool in case of shared, or the default in case the container did not explicitly ask for any pooled resources.
-CPUSetter then provisions the calculated set into the relevant parametet of the container's cgroupfs filesystem (cpuset.cpus).
+CPUSetter then provisions the calculated set into the relevant parameter of the container's cgroupfs filesystem (cpuset.cpus).
 As CPUSetter is triggered by all Pods on all Nodes, we can be sure no containers can ever -even accidentally- access CPU resources not meant for them!  
 
 ## Using the allocated CPUs
@@ -236,7 +236,7 @@ Create cpu-device-plugin config and daemonset:
 $ kubectl create -f deployment/cpu-pooler-config.yaml
 $ kubectl create -f deployment/cpu-dev-ds.yaml
 ```
-There is a helper script ```./scripts/generate_cert.sh``` that generates certificate and key for the webhook admission controller. The script ```deployment/create-webhook-conf.sh``` can be used to create the webhook configuration from the provided manifest file (```webhook-conf.yaml```).
+There is a helper script ```./scripts/generate-cert.sh``` that generates certificate and key for the webhook admission controller. The script ```deployment/create-webhook-conf.sh``` can be used to create the webhook configuration from the provided manifest file (```webhook-conf.yaml```).
 
 Create CPUSetter daemonset:
 ```
