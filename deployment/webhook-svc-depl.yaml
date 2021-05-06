@@ -13,7 +13,7 @@ spec:
   selector:
     app: cpu-dev-pod-mutator
 ---
-apiVersion: apps/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cpu-dev-pod-mutator-deployment
@@ -22,6 +22,9 @@ metadata:
     app: cpu-dev-pod-mutator
 spec:
   replicas: 1
+   selector:
+    matchLabels:
+      app: cpu-dev-pod-mutator
   template:
     metadata:
       name: cpu-dev-pod-mutator
