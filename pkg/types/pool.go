@@ -57,39 +57,34 @@ func DeterminePoolType(poolName string) string {
 //DeterminePoolConfig first interrogates the label set of the Node this process runs on.
 //It uses this information to select the specific PoolConfig file corresponding to the Node.
 //Returns the selected PoolConfig file, the name of the file, or an error if it was impossible to determine which config file is applicable.
-func DeterminePoolConfig() (PoolConfig, string, error) {
+func DeterminePoolConfig() (PoolConfig, error) {
 	nodeLabels, err := k8sclient.GetNodeLabels()
 	if err != nil {
-		return PoolConfig{}, "", fmt.Errorf("following error happend when trying to read K8s API server Node object: %s", err)
+		return PoolConfig{}, fmt.Errorf("following error happend when trying to read K8s API server Node object: %s", err)
 	}
 	return readPoolConfig(nodeLabels)
 }
 
-// ReadPoolConfig implements pool configuration file reading
-func readPoolConfig(labelMap map[string]string) (PoolConfig, string, error) {
-	files, err := filepath.Glob(filepath.Join(PoolConfigDir, "poolconfig-*"))
+func readPoolConfig(labelMap map[string]string) (PoolConfig, error) {
+	poolConfs, err := ReadAllPoolConfigs()
 	if err != nil {
-		return PoolConfig{}, "", err
+		return PoolConfig{}, err
 	}
-	for _, f := range files {
-		pools, err := ReadPoolConfigFile(f)
-		if err != nil {
-			return PoolConfig{}, "", err
-		}
+	for index, poolConf := range poolConfs {
 		if labelMap == nil {
-			glog.Infof("Using first configuration file %s as pool config in lieu of missing Node information", f)
-			return pools, f, nil
+			glog.Infof("Using first configuration file as pool config in lieu of missing Node information")
+			return poolConf, nil
 		}
 		for label, labelValue := range labelMap {
-			if value, ok := pools.NodeSelector[label]; ok {
+			if value, ok := poolConf.NodeSelector[label]; ok {
 				if value == labelValue {
-					glog.Infof("Using configuration file %s for pool config", f)
-					return pools, f, nil
+					glog.Infof("Using configuration file no: %d for pool config", index)
+					return poolConf, nil
 				}
 			}
 		}
 	}
-	return PoolConfig{}, "", fmt.Errorf("no matching pool configuration file found for provided nodeSelector labels")
+	return PoolConfig{}, fmt.Errorf("no matching pool configuration file found for provided nodeSelector labels")
 }
 
 // ReadPoolConfigFile reads a pool configuration file
@@ -126,4 +121,21 @@ func (poolConf PoolConfig) SelectPool(prefix string) Pool {
 		}
 	}
 	return Pool{}
+}
+
+//ReadAllPoolConfigs reads all the CPU pools configured in the cluster, and returns them to the user in one big array
+func ReadAllPoolConfigs() ([]PoolConfig, error) {
+	files, err := filepath.Glob(filepath.Join(PoolConfigDir, "poolconfig-*"))
+	if err != nil {
+		return nil, err
+	}
+	poolConfs := make([]PoolConfig, 0)
+	for _, f := range files {
+		poolConf, err := ReadPoolConfigFile(f)
+		if err != nil {
+			return nil, err
+		}
+		poolConfs = append(poolConfs, poolConf)
+	}
+	return poolConfs, nil
 }

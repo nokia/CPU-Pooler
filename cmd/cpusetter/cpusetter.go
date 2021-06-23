@@ -21,7 +21,7 @@ func main() {
 	if poolConfigPath == "" || cpusetRoot == "" {
 		log.Fatal("ERROR: Mandatory command-line arguments poolconfigs and cpusetroot were not provided!")
 	}
-	poolConf, _, err := types.DeterminePoolConfig()
+	poolConf, err := types.DeterminePoolConfig()
 	if err != nil {
 		log.Fatal("ERROR: Could not read CPU pool configuration files because: " + err.Error() + ", exiting!")
 	}

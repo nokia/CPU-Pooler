@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	//MixedContainerSafetyMarginRatio is the percentage we allocate for hybrid (shared+exclusive) containers as a CFS quota on top of their original request
-	MixedContainerSafetyMarginRatio = 20
 	//QuotaAll is one of the possible values of the webhook cfs-quotas parameter. All means CFS quotas should be automatically provisioned for every container
 	QuotaAll = "all"
 	//QuotaShared is one of the possible values of the webhook cfs-quotas parameter. Shared means CFS quotas should be automatically provisioned only for shared user containers
@@ -45,6 +43,7 @@ type containerPoolRequests struct {
 	exclusiveCPURequests int
 	pools                map[string]int
 }
+
 type poolRequestMap map[string]containerPoolRequests
 
 type patch struct {
@@ -126,24 +125,50 @@ func validateAnnotation(poolRequests poolRequestMap, cpuAnnotation types.CPUAnno
 }
 
 func setRequestLimit(requests containerPoolRequests, patchList []patch, contID int, contSpec *corev1.Container) []patch {
-	totalCFSLimit := requests.sharedCPURequests
+	totalCFSLimit := 0
 	if requests.exclusiveCPURequests > 0 && cfsQuotas == QuotaAll {
 		if requests.sharedCPURequests > 0 {
 			//This is the case when both shared, and exclusive pool resources are requested by the same container
 			//To avoid artificially throttling the exclusive user threads when the shared threads are overstepping their boundaries,
-			// we add a 20% safety margin to the overall CFS quota governing the usage of the whole cpuset.
-			//As the exclusive cores utiliziation is capped at 100% of physical capacity,
-			// this margin is only utilized when shared threads would throttle the exclusive ones.
-			totalCFSLimit += 1000*requests.exclusiveCPURequests + MixedContainerSafetyMarginRatio*requests.sharedCPURequests/100
+			// we need to include the full size of the shared pool into the limit calculation.
+			//This unfortunately allows mixed users to overstep their boundaries, but is the only way to ensure shared threads cannot
+			// throttle the latency sensitive ones with their occasional bursts.
+			//#PerformanceFirst
+			totalCFSLimit = 1000*requests.exclusiveCPURequests + getMaxSharedPoolLimit(requests, contSpec)
 		} else {
 			//When only exclusive CPUs are requested we pad the limits with an arbitrary margin to avoid accidentally throttling sensitive workloads
-			totalCFSLimit += 1000*requests.exclusiveCPURequests + 100
+			totalCFSLimit = 1000*requests.exclusiveCPURequests + 100
 		}
+	} else if requests.sharedCPURequests > 0 {
+		totalCFSLimit = requests.sharedCPURequests
 	}
 	if totalCFSLimit > 0 {
 		patchList = patchCPULimit(totalCFSLimit, patchList, contID, contSpec)
 	}
 	return patchList
+}
+
+func getMaxSharedPoolLimit(requests containerPoolRequests, contSpec *corev1.Container) int {
+	poolConfs, err := types.ReadAllPoolConfigs()
+	if err != nil {
+		glog.Warningf("Container %s asked for mixed allocations but pool configs could not be read to determine proper CFS limit - only exclusive allocations are accounted for properly", contSpec.Name)
+		return requests.sharedCPURequests
+	}
+	var sharedPoolName string
+	for poolName, request := range requests.pools {
+		if request == requests.sharedCPURequests {
+			sharedPoolName = poolName
+		}
+	}
+	maxSharedPoolSize := 0
+	for _, poolConf := range poolConfs {
+		if pool, ok := poolConf.Pools[sharedPoolName]; ok {
+			if pool.CPUset.Size()*1000 > maxSharedPoolSize {
+				maxSharedPoolSize = pool.CPUset.Size() * 1000
+			}
+		}
+	}
+	return maxSharedPoolSize
 }
 
 func patchCPULimit(sharedCPUTime int, patchList []patch, i int, c *corev1.Container) []patch {
