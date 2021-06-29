@@ -13,7 +13,7 @@ func TestReadPoolConfig(t *testing.T) {
 	labels["nodeType"] = "dpdk"
 	labels["label1"] = "label1"
 
-	poolConfig, _, err := readPoolConfig(labels)
+	poolConfig, err := readPoolConfig(labels)
 	if err != nil {
 		t.Errorf("Failed to read pool config %v", err)
 	}

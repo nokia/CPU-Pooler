@@ -15,7 +15,7 @@ import (
 	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
 	"github.com/nokia/CPU-Pooler/pkg/topology"
 	"github.com/nokia/CPU-Pooler/pkg/types"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -29,6 +29,7 @@ var (
 	processConfigKey       = resourceBaseName + "/cpus"
 	setterAnnotationSuffix = "cpusets-configured"
 	setterAnnotationKey    = resourceBaseName + "/" + setterAnnotationSuffix
+	containerPrefixList    = []string{"docker://", "containerd://"}
 )
 
 type checkpointPodDevicesEntry struct {
@@ -284,9 +285,18 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 	return ""
 }
 
+func trimContainerPrefix(contName string) string {
+	for _, prefix := range containerPrefixList{
+		if strings.HasPrefix(contName, prefix){
+			return strings.TrimPrefix(contName, prefix)
+		}
+	}
+	return contName
+}
+
 func containerIDInPodStatus(podStatus v1.PodStatus, containerDirName string) bool {
 	for _, containerStatus := range podStatus.ContainerStatuses {
-		trimmedCid := strings.TrimPrefix(containerStatus.ContainerID, "docker://")
+		trimmedCid:= trimContainerPrefix(containerStatus.ContainerID)
 		if strings.Contains(containerDirName, trimmedCid) {
 			return true
 		}
@@ -300,8 +310,7 @@ func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset 
 		log.Printf("WARNING: for some reason cpuset to set was quite empty for container: %s.I left it untouched.", containerID)
 		return "", nil
 	}
-	//According to K8s documentation CID is stored in "docker://<container_id>" format when dockershim is configured for CRE
-	trimmedCid := strings.TrimPrefix(containerID, "docker://")
+	trimmedCid := trimContainerPrefix(containerID)
 	var pathToContainerCpusetFile string
 	err := filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
 		if err != nil {
