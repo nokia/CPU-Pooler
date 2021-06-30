@@ -3,14 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/golang/glog"
-	"github.com/nokia/CPU-Pooler/pkg/topology"
-	"github.com/nokia/CPU-Pooler/pkg/types"
-	"golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
-	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"net"
 	"os"
 	"os/signal"
@@ -19,6 +11,15 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/golang/glog"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
+	"github.com/nokia/CPU-Pooler/pkg/types"
+	"golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 var (
@@ -243,7 +244,7 @@ func createPluginsForPools() error {
 			glog.Fatal(err)
 		}
 	}
-	poolConf, _, err := types.DeterminePoolConfig()
+	poolConf, err := types.DeterminePoolConfig()
 	if err != nil {
 		glog.Fatal(err)
 	}
