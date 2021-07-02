@@ -3,7 +3,18 @@ package sethandler
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/nokia/CPU-Pooler/pkg/checkpoint"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
+	"github.com/nokia/CPU-Pooler/pkg/types"
 	"io/ioutil"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,17 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
-	"github.com/nokia/CPU-Pooler/pkg/topology"
-	"github.com/nokia/CPU-Pooler/pkg/types"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 var (
@@ -31,20 +31,6 @@ var (
 	setterAnnotationKey    = resourceBaseName + "/" + setterAnnotationSuffix
 	containerPrefixList    = []string{"docker://", "containerd://"}
 )
-
-type checkpointPodDevicesEntry struct {
-	PodUID        string
-	ContainerName string
-	ResourceName  string
-	DeviceIDs     []string
-}
-
-// kubelet checkpoint file structure with only relevant fields
-type checkpointFile struct {
-	Data struct {
-		PodDeviceEntries []checkpointPodDevicesEntry
-	}
-}
 
 //SetHandler is the data set encapsulating the configuration data needed for the CPUSetter Controller to be able to adjust cpusets
 type SetHandler struct {
@@ -176,7 +162,7 @@ func gatherAllContainers(pod v1.Pod) map[string]int {
 func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet map[string]int) {
 	var (
 		pathToContainerCpusetFile string
-		err error
+		err                       error
 	)
 	for _, container := range pod.Spec.Containers {
 		if _, found := containersToBeSet[container.Name]; !found {
@@ -239,15 +225,20 @@ func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Co
 
 func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName string, pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
 	checkpointFileName := "/var/lib/kubelet/device-plugins/kubelet_internal_checkpoint"
-	var cp checkpointFile
 	buf, err := ioutil.ReadFile(checkpointFileName)
 	if err != nil {
 		log.Printf("Error reading file %s: Error: %v", checkpointFileName, err)
 		return cpuset.CPUSet{}, fmt.Errorf("kubelet checkpoint file could not be accessed because: %s", err)
 	}
+	var cp checkpoint.CheckpointFile
 	if err = json.Unmarshal(buf, &cp); err != nil {
-		log.Printf("error unmarshalling kubelet checkpoint file: %s", err)
-		return cpuset.CPUSet{}, err
+		//K8s 1.21 changed internal file structure, so let's try that too before returning with error
+		var newCpFile checkpoint.NewCheckpointFile
+		if err = json.Unmarshal(buf, &newCpFile); err != nil {
+			log.Printf("error unmarshalling kubelet checkpoint file: %s", err)
+			return cpuset.CPUSet{}, err
+		}
+		cp = checkpoint.TranslateNewCheckpointToOld(newCpFile)
 	}
 	podIDStr := string(pod.ObjectMeta.UID)
 	deviceIDs := []string{}
@@ -286,8 +277,8 @@ func determineCid(podStatus v1.PodStatus, containerName string) string {
 }
 
 func trimContainerPrefix(contName string) string {
-	for _, prefix := range containerPrefixList{
-		if strings.HasPrefix(contName, prefix){
+	for _, prefix := range containerPrefixList {
+		if strings.HasPrefix(contName, prefix) {
 			return strings.TrimPrefix(contName, prefix)
 		}
 	}
@@ -296,7 +287,7 @@ func trimContainerPrefix(contName string) string {
 
 func containerIDInPodStatus(podStatus v1.PodStatus, containerDirName string) bool {
 	for _, containerStatus := range podStatus.ContainerStatuses {
-		trimmedCid:= trimContainerPrefix(containerStatus.ContainerID)
+		trimmedCid := trimContainerPrefix(containerStatus.ContainerID)
 		if strings.Contains(containerDirName, trimmedCid) {
 			return true
 		}
