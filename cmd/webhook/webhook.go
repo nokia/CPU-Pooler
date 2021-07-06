@@ -6,18 +6,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/golang/glog"
 	"github.com/nokia/CPU-Pooler/pkg/types"
-	"io/ioutil"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -31,7 +32,6 @@ var (
 	scheme             = runtime.NewScheme()
 	codecs             = serializer.NewCodecFactory(scheme)
 	resourceBaseName   = "nokia.k8s.io"
-	annotationKey      = "patched"
 	processStarterPath = "/opt/bin/process-starter"
 	certFile           string
 	keyFile            string
@@ -193,6 +193,13 @@ func patchContainerEnv(poolRequests poolRequestMap, envPatched bool, patchList [
 	var patchItem patch
 	var poolStr string
 
+	for _, envVar := range c.Env {
+		if envVar.Name == "CPU_POOLS" {
+			// Don't reapply already patched item
+			return patchList, nil
+		}
+	}
+
 	if poolRequests[c.Name].exclusiveCPURequests > 0 && poolRequests[c.Name].sharedCPURequests > 0 {
 		poolStr = types.ExclusivePoolID + "&" + types.SharedPoolID
 	} else if poolRequests[c.Name].exclusiveCPURequests > 0 {
@@ -219,15 +226,24 @@ func patchContainerEnv(poolRequests poolRequestMap, envPatched bool, patchList [
 func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []patch, i int, c *corev1.Container) ([]patch, error) {
 	var patchItem patch
 
+	for _, volMount := range c.VolumeMounts {
+		if volMount.Name == "podinfo" {
+			// Assuming that all other container related patch is already patched, skip reapply these patches
+			return patchList, nil
+		}
+	}
+
 	glog.V(2).Infof("Adding CPU pinning patches")
 	// podinfo volumeMount
 	patchItem.Op = "add"
+
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
 	patchItem.Value =
 		json.RawMessage(`{"name":"podinfo","mountPath":"/etc/podinfo","readOnly":true}`)
 	patchList = append(patchList, patchItem)
 
 	// hostbin volumeMount. Location for process starter binary
+
 	patchItem.Path = "/spec/containers/" + strconv.Itoa(i) + "/volumeMounts/-"
 	contVolumePatch := `{"name":"hostbin","mountPath":"` + processStarterPath + `","readOnly":true}`
 	patchItem.Value =
@@ -262,7 +278,6 @@ func patchContainerForPinning(cpuAnnotation types.CPUAnnotation, patchList []pat
 		patchItem.Value = json.RawMessage(args)
 		patchList = append(patchList, patchItem)
 	}
-
 	return patchList, nil
 }
 
@@ -278,15 +293,6 @@ func patchVolumesForPinning(patchList []patch) []patch {
 	patchItem.Path = "/spec/volumes/-"
 	volumePathPatch := `{"name":"hostbin","hostPath":{ "path":"` + processStarterPath + `"} }`
 	patchItem.Value = json.RawMessage(volumePathPatch)
-	patchList = append(patchList, patchItem)
-	return patchList
-}
-
-func patchPinningAnnotation(patchList []patch) []patch {
-	var patchItem patch
-	patchItem.Op = "add"
-	patchItem.Path = "/metadata/annotations/" + resourceBaseName + "~1" + annotationKey
-	patchItem.Value = json.RawMessage(`"done"`)
 	patchList = append(patchList, patchItem)
 	return patchList
 }
@@ -318,10 +324,6 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	annotationName := annotationNameFromConfig()
 
 	reviewResponse.Allowed = true
-
-	if pod.ObjectMeta.Annotations[resourceBaseName+"/"+annotationKey] == "done" {
-		return &reviewResponse
-	}
 
 	podAnnotation, podAnnotationExists := pod.ObjectMeta.Annotations[annotationName]
 
@@ -386,8 +388,15 @@ func mutatePods(ar v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	}
 	// Add volumes if any container was patched for pinning
 	if pinningPatchAdded {
-		patchList = patchVolumesForPinning(patchList)
-		patchList = patchPinningAnnotation(patchList)
+		exists := false
+		for _, volume := range pod.Spec.Volumes {
+			if volume.Name == "hostbin" || volume.Name == "podinfo" {
+				exists = true
+			}
+		}
+		if !exists {
+			patchList = patchVolumesForPinning(patchList)
+		}
 	} else if podAnnotationExists {
 		glog.Errorf("CPU annotation exists but no container was patched %v:%v",
 			cpuAnnotation, pod.Spec.Containers)
