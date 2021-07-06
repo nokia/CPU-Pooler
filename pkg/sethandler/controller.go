@@ -3,18 +3,7 @@ package sethandler
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/nokia/CPU-Pooler/pkg/checkpoint"
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
-	"github.com/nokia/CPU-Pooler/pkg/topology"
-	"github.com/nokia/CPU-Pooler/pkg/types"
 	"io/ioutil"
-	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,6 +11,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nokia/CPU-Pooler/pkg/checkpoint"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
+	"github.com/nokia/CPU-Pooler/pkg/types"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 )
 
 var (
@@ -230,10 +231,10 @@ func (setHandler *SetHandler) getListOfAllocatedExclusiveCpus(exclusivePoolName 
 		log.Printf("Error reading file %s: Error: %v", checkpointFileName, err)
 		return cpuset.CPUSet{}, fmt.Errorf("kubelet checkpoint file could not be accessed because: %s", err)
 	}
-	var cp checkpoint.CheckpointFile
+	var cp checkpoint.File
 	if err = json.Unmarshal(buf, &cp); err != nil {
 		//K8s 1.21 changed internal file structure, so let's try that too before returning with error
-		var newCpFile checkpoint.NewCheckpointFile
+		var newCpFile checkpoint.NewFile
 		if err = json.Unmarshal(buf, &newCpFile); err != nil {
 			log.Printf("error unmarshalling kubelet checkpoint file: %s", err)
 			return cpuset.CPUSet{}, err
