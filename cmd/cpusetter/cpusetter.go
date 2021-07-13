@@ -10,6 +10,11 @@ import (
 	"syscall"
 )
 
+const (
+	//NumberOfWorkers controls how many asynch event handler threads are started in the CPUSetter controller
+	NumberOfWorkers = 100
+)
+
 var (
 	kubeConfig     string
 	poolConfigPath string
@@ -29,18 +34,16 @@ func main() {
 	if err != nil {
 		log.Fatal("ERROR: Could not initalize K8s client because of error: " + err.Error() + ", exiting!")
 	}
-	controller := setHandler.CreateController()
+
 	stopChannel := make(chan struct{})
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, syscall.SIGINT, syscall.SIGTERM)
-	log.Println("CPUSetter's Controller initalized successfully! Warm-up starts now!")
-	go controller.Run(stopChannel)
-	// Wait until Controller pushes a signal on the stop channel
+	log.Println("CPUSetter's Controller initalized successfully!")
+	setHandler.Run(NumberOfWorkers, &stopChannel)
 	select {
-	case <-stopChannel:
-		log.Fatal("CPUSetter's Controller stopped abruptly, exiting!")
 	case <-signalChannel:
-		log.Println("Orchestrator initiated graceful shutdown. See you soon!")
+		log.Println("Orchestrator initiated graceful shutdown, ending CPUSetter workers...(o_o)/")
+		setHandler.Stop()
 	}
 }
 

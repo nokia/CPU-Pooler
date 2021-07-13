@@ -74,7 +74,7 @@ func pollCPUSetCompletion() (exclusiveCPUs, sharedCPUs []int) {
 	poolType := os.Getenv("CPU_POOLS")
 	fmt.Printf("Used CPU Pool(s):  %s\n", poolType)
 	// Wait max 10 seconds for cpusetter to set the cgroup cpuset
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 30; i++ {
 		switch poolType {
 		case types.ExclusivePoolID + "&" + types.SharedPoolID:
 			exclusiveCPUSet, err = cpuset.Parse(os.Getenv("EXCLUSIVE_CPUS"))

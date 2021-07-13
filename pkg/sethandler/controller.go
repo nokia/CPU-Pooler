@@ -2,8 +2,25 @@ package sethandler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/nokia/CPU-Pooler/pkg/checkpoint"
+	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
+	"github.com/nokia/CPU-Pooler/pkg/topology"
+	"github.com/nokia/CPU-Pooler/pkg/types"
+	"golang.org/x/sys/unix"
+	"io"
 	"io/ioutil"
+	"k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/workqueue"
+	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,18 +28,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+)
 
-	"github.com/nokia/CPU-Pooler/pkg/checkpoint"
-	"github.com/nokia/CPU-Pooler/pkg/k8sclient"
-	"github.com/nokia/CPU-Pooler/pkg/topology"
-	"github.com/nokia/CPU-Pooler/pkg/types"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
+const (
+	//MaxRetryCount controls how many times we re-try a remote API operation
+	MaxRetryCount = 150
+	//RetryInterval controls how much time (in milliseconds) we wait between two retry attempts when talking to a remote API
+	RetryInterval = 200
 )
 
 var (
@@ -33,11 +45,20 @@ var (
 	containerPrefixList    = []string{"docker://", "containerd://"}
 )
 
+type workItem struct {
+	oldPod *v1.Pod
+	newPod *v1.Pod
+}
+
 //SetHandler is the data set encapsulating the configuration data needed for the CPUSetter Controller to be able to adjust cpusets
 type SetHandler struct {
-	poolConfig types.PoolConfig
-	cpusetRoot string
-	k8sClient  kubernetes.Interface
+	poolConfig      types.PoolConfig
+	cpusetRoot      string
+	k8sClient       kubernetes.Interface
+	informerFactory informers.SharedInformerFactory
+	podSynced       cache.InformerSynced
+	workQueue       workqueue.Interface
+	stopChan        *chan struct{}
 }
 
 //SetHandler returns the SetHandler data set
@@ -50,6 +71,7 @@ func (setHandler *SetHandler) SetSetHandler(poolconf types.PoolConfig, cpusetRoo
 	setHandler.poolConfig = poolconf
 	setHandler.cpusetRoot = cpusetRoot
 	setHandler.k8sClient = k8sClient
+	setHandler.workQueue = workqueue.New()
 }
 
 //New creates a new SetHandler object
@@ -63,90 +85,157 @@ func New(kubeConf string, poolConfig types.PoolConfig, cpusetRoot string) (*SetH
 	if err != nil {
 		return nil, err
 	}
+	kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, time.Second)
+	podInformer := kubeInformerFactory.Core().V1().Pods().Informer()
 	setHandler := SetHandler{
-		poolConfig: poolConfig,
-		cpusetRoot: cpusetRoot,
-		k8sClient:  kubeClient,
+		poolConfig:      poolConfig,
+		cpusetRoot:      cpusetRoot,
+		k8sClient:       kubeClient,
+		informerFactory: kubeInformerFactory,
+		podSynced:       podInformer.HasSynced,
+		workQueue:       workqueue.New(),
 	}
+	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			setHandler.PodAdded((reflect.ValueOf(obj).Interface().(*v1.Pod)))
+		},
+	})
+	podInformer.SetWatchErrorHandler(setHandler.WatchErrorHandler)
 	return &setHandler, nil
 }
 
-//CreateController takes the K8s client from the SetHandler object, and uses it to create a single thread K8s Controller
-//The Controller registers eventhandlers for ADD and UPDATE operations happening in the core/v1/Pod API
-func (setHandler *SetHandler) CreateController() cache.Controller {
-	kubeInformerFactory := informers.NewSharedInformerFactory(setHandler.k8sClient, time.Second*30)
-	controller := kubeInformerFactory.Core().V1().Pods().Informer()
-	controller.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj interface{}) { setHandler.PodAdded(*(reflect.ValueOf(obj).Interface().(*v1.Pod))) },
-		DeleteFunc: func(obj interface{}) {},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			setHandler.PodChanged(*(reflect.ValueOf(oldObj).Interface().(*v1.Pod)), *(reflect.ValueOf(newObj).Interface().(*v1.Pod)))
-		},
-	})
-	return controller
+//Run kicks the CPUSetter controller into motion, synchs it with the API server, and starts the desired number of asynch worker threads to handle the Pod API events
+func (setHandler *SetHandler) Run(threadiness int, stopCh *chan struct{}) error {
+	setHandler.stopChan = stopCh
+	setHandler.informerFactory.Start(*stopCh)
+	log.Println("Starting cpusetter Controller...")
+	log.Println("Waiting for Pod Controller cache to sync...")
+	if ok := cache.WaitForCacheSync(*stopCh, setHandler.podSynced); !ok {
+		return errors.New("failed to sync Pod Controller from cache! Are you sure everything is properly connected?")
+	}
+	log.Println("Starting " + strconv.Itoa(threadiness) + " cpusetter worker threads...")
+	for i := 0; i < threadiness; i++ {
+		go wait.Until(setHandler.runWorker, time.Second, *stopCh)
+	}
+	log.Println("CPUSetter is successfully initialized, worker threads are now serving requests!")
+	return nil
 }
 
 //PodAdded handles ADD operations
-func (setHandler *SetHandler) PodAdded(pod v1.Pod) {
+func (setHandler *SetHandler) PodAdded(pod *v1.Pod) {
+	workItem := workItem{newPod: pod}
+	setHandler.workQueue.Add(workItem)
+}
+
+//WatchErrorHandler is an event handler invoked when the CPUSetter Controller's connection to the K8s API server breaks
+//In case the error is terminal it initiates a graceful shutdown for the whole Controller, implicitly restarting the connection by restarting the whole container
+func (setHandler *SetHandler) WatchErrorHandler(r *cache.Reflector, err error) {
+	if apierrors.IsResourceExpired(err) || apierrors.IsGone(err) || err == io.EOF {
+		log.Println("INFO: One of the API watchers closed gracefully, re-establishing connection")
+		return
+	}
+	//The default K8s client retry mechanism expires after a certain amount of time, and just gives-up
+	//It is better to shutdown the whole process now and freshly re-build the watchers, rather than risking becoming a permanent zombie
+	log.Println("ERROR: One of the API watchers closed unexpectedly with error:" + err.Error() + " restarting CPUSetter!")
+	setHandler.Stop()
+	//Give some time for gracefully terminating the connections
+	time.Sleep(5 * time.Second)
+	os.Exit(0)
+}
+
+//Stop is invoked by the main thread to initiate graceful shutdown procedure. It shuts down the event handler queue, and relays a stop signal to the Controller
+func (setHandler *SetHandler) Stop() {
+	*setHandler.stopChan <- struct{}{}
+	setHandler.workQueue.ShutDown()
+}
+
+func (setHandler *SetHandler) runWorker() {
+	for setHandler.processNextWorkItem() {
+	}
+}
+
+func (setHandler *SetHandler) processNextWorkItem() bool {
+	obj, areWeShuttingDown := setHandler.workQueue.Get()
+	if areWeShuttingDown {
+		log.Println("WARNING: Received shutdown command from queue in thread:" + strconv.Itoa(unix.Gettid()))
+		return false
+	}
+	setHandler.processItemInQueue(obj)
+	return true
+}
+
+func (setHandler *SetHandler) processItemInQueue(obj interface{}) {
+	defer setHandler.workQueue.Done(obj)
+	var item workItem
+	var ok bool
+	if item, ok = obj.(workItem); !ok {
+		log.Println("WARNING: Cannot decode work item from queue in thread: " + strconv.Itoa(unix.Gettid()) + ", be aware that we are skipping some events!!!")
+		return
+	}
+	setHandler.handlePods(item)
+}
+
+func (setHandler *SetHandler) handlePods(item workItem) {
+	isItMyPod, pod := shouldPodBeHandled(*item.newPod)
 	//The maze wasn't meant for you
-	if !shouldPodBeHandled(pod) {
+	if !isItMyPod {
 		return
 	}
 	containersToBeSet := gatherAllContainers(pod)
 	if len(containersToBeSet) > 0 {
-		setHandler.adjustContainerSets(pod, containersToBeSet)
-	}
-}
-
-//PodChanged handles UPDATE operations
-func (setHandler *SetHandler) PodChanged(oldPod, newPod v1.Pod) {
-	//The maze wasn't meant for you either
-	if !shouldPodBeHandled(newPod) {
-		return
-	}
-	containersToBeSet := map[string]int{}
-	if newPod.ObjectMeta.Annotations[setterAnnotationKey] != "" {
-		containersToBeSet = determineContainersToBeSet(oldPod, newPod)
+		var err error
+		for i := 0; i < MaxRetryCount; i++ {
+			err = setHandler.adjustContainerSets(pod, containersToBeSet)
+			if err == nil {
+				return
+			}
+			time.Sleep(RetryInterval * time.Millisecond)
+		}
+		log.Println("ERROR: Timed out trying to adjust the cpusets of the containers belonging to Pod:" + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " because:" + err.Error())
 	} else {
-		containersToBeSet = gatherAllContainers(newPod)
-	}
-	if len(containersToBeSet) > 0 {
-		setHandler.adjustContainerSets(newPod, containersToBeSet)
+		log.Println("WARNING: there were no containers to handle in: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " in thread:" + strconv.Itoa(unix.Gettid()))
 	}
 }
 
-func shouldPodBeHandled(pod v1.Pod) bool {
-	setterNodeName := os.Getenv("NODE_NAME")
-	podNodeName := pod.Spec.NodeName
-	//Pod is not yet scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
-	if setterNodeName == "" || podNodeName == "" || setterNodeName != podNodeName {
-		return false
-	}
-
+func shouldPodBeHandled(pod v1.Pod) (bool, v1.Pod) {
 	// Pod has exited/completed and all containers have stopped
 	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
-		return false
+		return false, pod
 	}
-
-	return true
+	setterNodeName := os.Getenv("NODE_NAME")
+	for i := 0; i < MaxRetryCount; i++ {
+		//We will unconditionally read the Pod at least once due to two reasons:
+		//1: 99% Chance that the Pod arriving in the CREATE event is not yet ready to be processed
+		//2: Avoid spending cycles on a Pod which does not even exist anymore in the API server
+		newPod, err := k8sclient.RefreshPod(pod)
+		if err != nil {
+			log.Println("WARNING: Pod:" + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " is not adjusted as reading it again failed with:" + err.Error())
+			return false, pod
+		}
+		if isPodReadyForProcessing(*newPod) {
+			pod = *newPod
+			break
+		}
+		time.Sleep(RetryInterval * time.Millisecond)
+	}
+	//Pod is still haven't been scheduled, or it wasn't scheduled to the Node of this specific CPUSetter instance
+	if setterNodeName != pod.Spec.NodeName {
+		return false, pod
+	}
+	return true, pod
 }
 
-func determineContainersToBeSet(oldPod, newPod v1.Pod) map[string]int {
-	workingContainers := map[string]int{}
-	found := false
-	for _, newContainerStatus := range newPod.Status.ContainerStatuses {
-		found = false
-		for _, oldContainerStatus := range oldPod.Status.ContainerStatuses {
-			if oldContainerStatus.ContainerID == newContainerStatus.ContainerID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			workingContainers[newContainerStatus.Name] = 0
+func isPodReadyForProcessing(pod v1.Pod) bool {
+	if pod.Spec.NodeName == "" || len(pod.Status.ContainerStatuses) != len(pod.Spec.Containers) {
+		return false
+	}
+	for _, cStatus := range pod.Status.ContainerStatuses {
+		if cStatus.ContainerID == "" {
+			//Pod might have been scheduled but its containers haven't been created yet
+			return false
 		}
 	}
-	return workingContainers
+	return true
 }
 
 func gatherAllContainers(pod v1.Pod) map[string]int {
@@ -160,7 +249,7 @@ func gatherAllContainers(pod v1.Pod) map[string]int {
 	return workingContainers
 }
 
-func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet map[string]int) {
+func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet map[string]int) error {
 	var (
 		pathToContainerCpusetFile string
 		err                       error
@@ -171,29 +260,26 @@ func (setHandler *SetHandler) adjustContainerSets(pod v1.Pod, containersToBeSet 
 		}
 		cpuset, err := setHandler.determineCorrectCpuset(pod, container)
 		if err != nil {
-			log.Printf("ERROR: Cpuset for the containers of Pod: %s ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
-			continue
+			return errors.New("correct cpuset for the containers of Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be calculated in thread:" + strconv.Itoa(unix.Gettid()) + " because:" + err.Error())
 		}
 		containerID := determineCid(pod.Status, container.Name)
 		if containerID == "" {
-			log.Printf("ERROR: Cannot determine container id for %s from Pod: %s ID: %s", container.Name, pod.ObjectMeta.Name, pod.ObjectMeta.UID)
-			return
+			return errors.New("cannot determine container ID of container: " + container.Name + " in Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " in thread:" + strconv.Itoa(unix.Gettid()) + " because:" + err.Error())
 		}
-		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(containerID, cpuset)
+		pathToContainerCpusetFile, err = setHandler.applyCpusetToContainer(pod.ObjectMeta, containerID, cpuset)
 		if err != nil {
-			log.Printf("ERROR: Cpuset for the containers of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
-			continue
+			return errors.New("cpuset of container: " + container.Name + " in Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted in thread:" + strconv.Itoa(unix.Gettid()) + " because:" + err.Error())
 		}
 	}
 	err = setHandler.applyCpusetToInfraContainer(pod.ObjectMeta, pod.Status, pathToContainerCpusetFile)
 	if err != nil {
-		log.Printf("ERROR: Cpuset for the infracontainer of Pod: %s with ID: %s could not be re-adjusted, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
-		return
+		return errors.New("cpuset of the infra container in Pod: " + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + " could not be re-adjusted in thread:" + strconv.Itoa(unix.Gettid()) + " because:" + err.Error())
 	}
 	err = k8sclient.SetPodAnnotation(pod, setterAnnotationKey, "true")
 	if err != nil {
-		log.Printf("ERROR: %s ID: %s  annotation cannot update, because: %s", pod.ObjectMeta.Name, pod.ObjectMeta.UID, err)
+		return errors.New("could not update annotation in Pod:" + pod.ObjectMeta.Name + " ID: " + string(pod.ObjectMeta.UID) + "  in thread:" + strconv.Itoa(unix.Gettid()) + " because: " + err.Error())
 	}
+	return nil
 }
 
 func (setHandler *SetHandler) determineCorrectCpuset(pod v1.Pod, container v1.Container) (cpuset.CPUSet, error) {
@@ -296,10 +382,10 @@ func containerIDInPodStatus(podStatus v1.PodStatus, containerDirName string) boo
 	return false
 }
 
-func (setHandler *SetHandler) applyCpusetToContainer(containerID string, cpuset cpuset.CPUSet) (string, error) {
+func (setHandler *SetHandler) applyCpusetToContainer(podMeta metav1.ObjectMeta, containerID string, cpuset cpuset.CPUSet) (string, error) {
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
-		log.Printf("WARNING: for some reason cpuset to set was quite empty for container: %s.I left it untouched.", containerID)
+		log.Println("WARNING: cpuset to set was quite empty for container:" + containerID + " in Pod:" + podMeta.Name + " ID:" + string(podMeta.UID) + " in thread:" + strconv.Itoa(unix.Gettid()) + ". I left it untouched.")
 		return "", nil
 	}
 	trimmedCid := trimContainerPrefix(containerID)
@@ -366,7 +452,7 @@ func (setHandler *SetHandler) applyCpusetToInfraContainer(podMeta metav1.ObjectM
 	cpuset := setHandler.poolConfig.SelectPool(types.DefaultPoolID).CPUset
 	if cpuset.IsEmpty() {
 		//Nothing to set. We will leave the container running on the Kubernetes provisioned default cpuset
-		log.Printf("WARNING: for some reason DEFAULT cpuset was quite empty. Cannot adjust cpuset for infra container for %s in namespace: %s", podMeta.Name, podMeta.Namespace)
+		log.Println("WARNING: DEFAULT cpuset to set was quite empty in Pod:" + podMeta.Name + " ID:" + string(podMeta.UID) + " in thread:" + strconv.Itoa(unix.Gettid()) + ". I left it untouched.")
 		return nil
 	}
 	if pathToSearchContainer == "" {

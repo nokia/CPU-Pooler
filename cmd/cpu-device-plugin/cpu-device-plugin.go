@@ -37,6 +37,9 @@ type cpuDeviceManager struct {
 	htTopology     map[int]string
 }
 
+//TODO: PoC if cpuset setting could be implemented in this hook? cpuset cgroup of the container should already exist at this point (kinda)
+//The DeviceIDs could be used to determine which container has them, once we have a container name parsed out from the allocation backend we could manipulate its cpuset before it is even started
+//Long shot, but if it works both cpusetter and process starter would become unnecessary
 func (cdm *cpuDeviceManager) PreStartContainer(ctx context.Context, psRqt *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
@@ -150,7 +153,11 @@ func (cdm *cpuDeviceManager) Allocate(ctx context.Context, rqt *pluginapi.Alloca
 }
 
 func (cdm *cpuDeviceManager) GetDevicePluginOptions(context.Context, *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
-	return &pluginapi.DevicePluginOptions{}, nil
+	dpOptions := pluginapi.DevicePluginOptions{
+		PreStartRequired:                false,
+		GetPreferredAllocationAvailable: false,
+	}
+	return &dpOptions, nil
 }
 
 func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) error {
@@ -176,6 +183,10 @@ func (cdm *cpuDeviceManager) Register(kubeletEndpoint, resourceName string) erro
 		return err
 	}
 	return nil
+}
+
+func (cdm *cpuDeviceManager) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	return &pluginapi.PreferredAllocationResponse{}, nil
 }
 
 func newCPUDeviceManager(poolName string, pool types.Pool, sharedCPUs string) *cpuDeviceManager {
