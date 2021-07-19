@@ -65,6 +65,17 @@ func RefreshPod(pod v1.Pod) (*v1.Pod, error) {
 	return cSet.CoreV1().Pods(pod.ObjectMeta.Namespace).Get(context.TODO(), pod.ObjectMeta.Name, metav1.GetOptions{})
 }
 
+//GetMyPods returns all the Pods to the caller running on the same node as this process
+//Node is identified by the NODE_NAME environment variable. The Pods are filtered based on their spec.nodeName attribute
+func GetMyPods() (*v1.PodList, error) {
+	cSet, err := createClientSet()
+	if err != nil {
+		return nil, err
+	}
+	nodeName := os.Getenv("NODE_NAME")
+	return cSet.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName})
+}
+
 func createClientSet() (*kubernetes.Clientset, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {

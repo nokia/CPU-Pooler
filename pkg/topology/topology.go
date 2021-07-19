@@ -47,17 +47,25 @@ func AddHTSiblingsToCPUSet(exclusiveCPUSet cpuset.CPUSet, coreMap map[int]string
 	return tempSet
 }
 
-func listAndParseCores(attribute string) map[int]int {
-	cmd := exec.Command("lscpu", "-p=cpu,"+attribute)
+//ExecCommand is generic wrapper around cmd.Run. It executes the exec.Cmd arriving as an input parameters, and either returns an error, or the stdout of the command to the caller
+//Used to interrogate CPU topology and cpusets directly from the host OS
+func ExecCommand(cmd *exec.Cmd) (string, error) {
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return string(stdout.Bytes()), nil
+}
+
+func listAndParseCores(attribute string) map[int]int {
 	coreMap := make(map[int]int)
+	outStr, err := ExecCommand(exec.Command("lscpu", "-p=cpu,"+attribute))
 	if err != nil {
 		log.Println("ERROR: could not interrogate the CPU topology of the node with lscpu, because:" + err.Error())
 		return coreMap
 	}
-	outStr := string(stdout.Bytes())
 	//Here be dragons: we need to manually parse the stdout into a CPU core map line-by-line
 	//lscpu -p and -J options are mutually exclusive :(
 	for _, lsLine := range strings.Split(strings.TrimSuffix(outStr, "\n"), "\n") {
