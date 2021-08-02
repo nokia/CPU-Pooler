@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.13-alpine AS build-env
+FROM golang:1.16.6-alpine3.14 AS build-env
 ARG PLUGIN_PATH=github.com/nokia/CPU-Pooler
 
 RUN apk add curl git

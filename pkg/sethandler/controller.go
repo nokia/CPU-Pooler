@@ -23,8 +23,10 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/cm/cpuset"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -108,16 +110,17 @@ func New(kubeConf string, poolConfig types.PoolConfig, cpusetRoot string) (*SetH
 func (setHandler *SetHandler) Run(threadiness int, stopCh *chan struct{}) error {
 	setHandler.stopChan = stopCh
 	setHandler.informerFactory.Start(*stopCh)
-	log.Println("Starting cpusetter Controller...")
-	log.Println("Waiting for Pod Controller cache to sync...")
+	log.Println("INFO: Starting cpusetter Controller...")
+	log.Println("INFO: Waiting for Pod Controller cache to sync...")
 	if ok := cache.WaitForCacheSync(*stopCh, setHandler.podSynced); !ok {
 		return errors.New("failed to sync Pod Controller from cache! Are you sure everything is properly connected?")
 	}
-	log.Println("Starting " + strconv.Itoa(threadiness) + " cpusetter worker threads...")
+	log.Println("INFO: Starting " + strconv.Itoa(threadiness) + " cpusetter worker threads...")
 	for i := 0; i < threadiness; i++ {
 		go wait.Until(setHandler.runWorker, time.Second, *stopCh)
 	}
-	log.Println("CPUSetter is successfully initialized, worker threads are now serving requests!")
+	setHandler.StartReconciliation()
+	log.Println("INFO: CPUSetter is successfully initialized, worker threads are now serving requests!")
 	return nil
 }
 
@@ -147,6 +150,13 @@ func (setHandler *SetHandler) WatchErrorHandler(r *cache.Reflector, err error) {
 func (setHandler *SetHandler) Stop() {
 	*setHandler.stopChan <- struct{}{}
 	setHandler.workQueue.ShutDown()
+}
+
+//StartReconciliation starts the reactive thread of SetHandler periodically checking expected and provisioned cpusets of the node
+//In case a container's observed cpuset differs from the expected (i.e. container was restarted) the thread resets it to the proper value
+func (setHandler *SetHandler) StartReconciliation() {
+	go setHandler.startReconciliationLoop()
+	log.Println("INFO: Successfully started the periodic cpuset reconciliation thread")
 }
 
 func (setHandler *SetHandler) runWorker() {
@@ -357,7 +367,7 @@ func calculateFinalExclusiveSet(exclusiveCpus []string, pod v1.Pod, container v1
 func determineCid(podStatus v1.PodStatus, containerName string) string {
 	for _, containerStatus := range podStatus.ContainerStatuses {
 		if containerStatus.Name == containerName {
-			return containerStatus.ContainerID
+			return trimContainerPrefix(containerStatus.ContainerID)
 		}
 	}
 	return ""
@@ -388,23 +398,22 @@ func (setHandler *SetHandler) applyCpusetToContainer(podMeta metav1.ObjectMeta, 
 		log.Println("WARNING: cpuset to set was quite empty for container:" + containerID + " in Pod:" + podMeta.Name + " ID:" + string(podMeta.UID) + " in thread:" + strconv.Itoa(unix.Gettid()) + ". I left it untouched.")
 		return "", nil
 	}
-	trimmedCid := trimContainerPrefix(containerID)
 	var pathToContainerCpusetFile string
 	err := filepath.Walk(setHandler.cpusetRoot, func(path string, f os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if strings.Contains(path, trimmedCid) {
+		if strings.Contains(path, containerID) {
 			pathToContainerCpusetFile = path
 			return filepath.SkipDir
 		}
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("%s cpuset path error: %s", trimmedCid, err.Error())
+		return "", fmt.Errorf("%s cpuset path error: %s", containerID, err.Error())
 	}
 	if pathToContainerCpusetFile == "" {
-		return "", fmt.Errorf("cpuset file does not exist for container: %s under the provided cgroupfs hierarchy: %s", trimmedCid, setHandler.cpusetRoot)
+		return "", fmt.Errorf("cpuset file does not exist for container: %s under the provided cgroupfs hierarchy: %s", containerID, setHandler.cpusetRoot)
 	}
 	returnContainerPath := pathToContainerCpusetFile
 	//And for our grand finale, we just "echo" the calculated cpuset to the cpuset cgroupfs "file" of the given container
@@ -419,14 +428,9 @@ func (setHandler *SetHandler) applyCpusetToContainer(podMeta metav1.ObjectMeta, 
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("%s child cpuset path error: %s", trimmedCid, err.Error())
+		return "", fmt.Errorf("%s child cpuset path error: %s", containerID, err.Error())
 	}
-	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
-	if err != nil {
-		return "", fmt.Errorf("can't open cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
-	}
-	defer file.Close()
-	_, err = file.WriteString(cpuset.String())
+	err = os.WriteFile(pathToContainerCpusetFile+"/cpuset.cpus", []byte(cpuset.String()), 0755)
 	if err != nil {
 		return "", fmt.Errorf("can't modify cpuset file: %s for container: %s because: %s", pathToContainerCpusetFile, containerID, err)
 	}
@@ -462,14 +466,86 @@ func (setHandler *SetHandler) applyCpusetToInfraContainer(podMeta metav1.ObjectM
 	if pathToContainerCpusetFile == "" {
 		return fmt.Errorf("cpuset file does not exist for infra container under the provided cgroupfs hierarchy: %s", setHandler.cpusetRoot)
 	}
-	file, err := os.OpenFile(pathToContainerCpusetFile+"/cpuset.cpus", os.O_WRONLY|os.O_SYNC, 0755)
-	if err != nil {
-		return fmt.Errorf("can't open cpuset file: %s for infra container: %s because: %s", pathToContainerCpusetFile, filepath.Base(pathToContainerCpusetFile), err)
-	}
-	defer file.Close()
-	_, err = file.WriteString(cpuset.String())
+	err := os.WriteFile(pathToContainerCpusetFile+"/cpuset.cpus", []byte(cpuset.String()), 0755)
 	if err != nil {
 		return fmt.Errorf("can't modify cpuset file: %s for infra container: %s because: %s", pathToContainerCpusetFile, filepath.Base(pathToContainerCpusetFile), err)
+	}
+	return nil
+}
+
+func (setHandler *SetHandler) startReconciliationLoop() {
+	timeToReconcile := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-timeToReconcile.C:
+			err := setHandler.reconcileCpusets()
+			if err != nil {
+				log.Println("WARNING: Periodic cpuset reconciliation failed with error:" + err.Error())
+				continue
+			}
+		case <-*setHandler.stopChan:
+			log.Println("INFO: Shutting down the periodic cpuset reconciliation thread")
+			timeToReconcile.Stop()
+			return
+		}
+	}
+}
+
+func (setHandler *SetHandler) reconcileCpusets() error {
+	pods, err := k8sclient.GetMyPods()
+	if pods == nil || err != nil {
+		return errors.New("couldn't List my Pods in the reconciliation loop because:" + err.Error())
+	}
+	leafCpusets, err := setHandler.getLeafCpusets()
+	if err != nil {
+		return errors.New("couldn't interrogate leaf cpusets from cgroupfs because:" + err.Error())
+	}
+	for _, pod := range pods.Items {
+		for _, container := range pod.Spec.Containers {
+			err = setHandler.reconcileContainer(leafCpusets, pod, container)
+			if err != nil {
+				log.Println("WARNING: Periodic reconciliation of container:" + container.Name + " of Pod:" + pod.ObjectMeta.Name + " in namespace:" + pod.ObjectMeta.Namespace + " failed with error:" + err.Error())
+			}
+		}
+	}
+	return nil
+}
+
+func (setHandler *SetHandler) getLeafCpusets() ([]string, error) {
+	stdOut, err := topology.ExecCommand(exec.Command("find", setHandler.cpusetRoot, "-type", "d", "-links", "2"))
+	if err != nil {
+		return nil, err
+	}
+	cpusetLeaves := strings.Split(strings.TrimSuffix(stdOut, "\n"), "\n")
+	return cpusetLeaves, nil
+}
+
+//Naive approach: we can prob afford not building a tree from the cgroup paths if we only reconcile every couple of seconds
+//Can be further optimized on need
+func (setHandler *SetHandler) reconcileContainer(leafCpusets []string, pod v1.Pod, container v1.Container) error {
+	containerID := determineCid(pod.Status, container.Name)
+	if containerID == "" {
+		return nil
+	}
+	numOfCpus := runtime.NumCPU()
+	badCpuset, _ := cpuset.Parse("0-" + strconv.Itoa(numOfCpus-1))
+	for _, leaf := range leafCpusets {
+		if strings.Contains(leaf, containerID) {
+			currentCpusetByte, _ := ioutil.ReadFile(leaf + "/cpuset.cpus")
+			currentCpusetStr := strings.TrimSpace(string(currentCpusetByte))
+			currentCpuset, _ := cpuset.Parse(currentCpusetStr)
+			if badCpuset.Equals(currentCpuset) {
+				correctSet, err := setHandler.determineCorrectCpuset(pod, container)
+				if err != nil {
+					return errors.New("could not determine correct cpuset because:" + err.Error())
+				}
+				err = os.WriteFile(leaf+"/cpuset.cpus", []byte(correctSet.String()), 0755)
+				if err != nil {
+					return errors.New("could not overwrite cpuset file:" + leaf + "/cpuset.cpus because:" + err.Error())
+				}
+			}
+			break
+		}
 	}
 	return nil
 }
