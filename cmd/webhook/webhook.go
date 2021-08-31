@@ -113,12 +113,12 @@ func validateAnnotation(poolRequests poolRequestMap, cpuAnnotation types.CPUAnno
 			if !exists {
 				return fmt.Errorf("Container %s; Pool %s in annotation not found from resources", cName, pool)
 			}
-			if cpuAnnotation.ContainerTotalCPURequest(pool, cName) != value {
+			// cpu request in annotation can be twice as exclusive pool request in resources in case of HT is enabled (HT policy is "multiThreaded")
+			if cpuAnnotation.ContainerTotalCPURequest(pool, cName) > 2 * value {
 				return fmt.Errorf("Exclusive CPU requests %d do not match to annotation %d",
 					cPoolRequests.pools[pool],
 					cpuAnnotation.ContainerTotalCPURequest(pool, cName))
 			}
-
 		}
 	}
 	return nil
